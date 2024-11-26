@@ -310,23 +310,43 @@ else{
 
 Write-Host "`nSelect folder containing Stalker2.exe"
 
-# Prompt user to select folder containing Stalker2.exe
-Add-Type -AssemblyName System.Windows.Forms
-$folderDialog = New-Object System.Windows.Forms.FolderBrowserDialog
-$folderDialog.Description = "Select folder containing Stalker2.exe"
-$folderDialog.ShowNewFolderButton = $false
-
-if ($folderDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-    $installPath = $folderDialog.SelectedPath
-    # Define the pak and mod folders based on the selected path
-    $pakDir = Join-Path -Path $installPath -ChildPath "Stalker2\Content\Paks\"
-    $modFolder = Join-Path -Path $pakDir -ChildPath "~mods\"
+$installPath = $null
+$pakDir = $null
+$modFolder = $null
+$gameSavedPath = ".\gamepath.txt"
+# Check if the file exists
+if (Test-Path $gameSavedPath) {
+	Write-Output "Game path file found"
+	# Read the key from the file
+	$installPath = Get-Content $gameSavedPath
+	if ($installPath) {
+        $pakDir = Join-Path -Path $installPath -ChildPath "Stalker2\Content\Paks\"
+        $modFolder = Join-Path -Path $pakDir -ChildPath "~mods\"
+		Write-Output "Game path loaded: $installPath"
+	}
 } else {
-    Write-Host "No folder selected. Exiting script." -ForegroundColor Red
-    pause
-    exit
-}
+	Write-Output "Game path file not found."
 
+    # Prompt user to select folder containing Stalker2.exe
+    Add-Type -AssemblyName System.Windows.Forms
+    $folderDialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $folderDialog.Description = "Select folder containing Stalker2.exe"
+    $folderDialog.ShowNewFolderButton = $false
+
+    if ($folderDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        $installPath = $folderDialog.SelectedPath
+        # Define the pak and mod folders based on the selected path
+        $pakDir = Join-Path -Path $installPath -ChildPath "Stalker2\Content\Paks\"
+        $modFolder = Join-Path -Path $pakDir -ChildPath "~mods\"
+        #write the game path
+        $installPath | Out-File $gameSavedPath
+        Write-Output "Game path saved"
+    } else {
+        Write-Host "No folder selected. Exiting script." -ForegroundColor Red
+        pause
+        exit
+    }
+}
 
 $stalker2EXEPath = Join-Path -Path $installPath -ChildPath "Stalker2.exe"
 if (-Not (Test-Path $stalker2EXEPath))
@@ -359,6 +379,9 @@ if(-Not($aesKey))
 	} else {
 		# User provided the key in hex format
 		$aesKey = $aesKeyInput
+		#write the key
+		$aesKey | Out-File $aesKeySavedPath
+		Write-Output "AES Key saved"
 	}
 }
 
