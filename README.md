@@ -21,6 +21,7 @@ It's based on the [mod conflict detection script](https://www.nexusmods.com/sta
 - You may need to be admin or to have the right to run script on your computer for it to work properly
 - Once obtained your AES Key will be saved in key.txt, delete this file if you need to change your key
 - If you have trouble with the folder picker, create a gamepath.txt and manually past your game path
+- You can manually download repak, KDiff3 and AESDumpster if the download is not working and place them next to the ps1 file in a 'AESDumpster' folder, a 'KDiff3-0.9.98' folder and a 'repak_cli-x86_64-pc-windows-msvc' folder
 
 
 
