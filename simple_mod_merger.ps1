@@ -411,7 +411,11 @@ foreach ($pakFile in $pakFiles) {
 
     # filter out everything but the file name
     $files = $rawOutput -replace '^.*"(?:.+/)*(.*)".*$', '$1'
-    $files = Split-Path -Path $files -Leaf
+
+    # check if files is not empty
+    if (-Not($files.Count -eq 0)) {
+        $files = Split-Path -Path $files -Leaf
+    }
 
     foreach ($file in $files) {
         if ($results.ContainsKey($file)) {
