@@ -98,6 +98,27 @@ function Unpack-And-Clean {
     }
 }
 
+function Ensure-MergedFolderStructure {
+    param (
+        [string]$mergedRelativePath,
+        [string]$mergedFolderPath
+    )
+
+    # Make sure that every subfolder of the merged folder exists
+    $folders = $mergedRelativePath.Split('\')
+    $currentPath = $mergedFolderPath
+    # Iterate through each folder in the relative path
+    foreach ($folder in $folders) {
+        # Construct the full path for the current folder
+        $currentPath = Join-Path -Path $currentPath -ChildPath $folder
+        # Check if the folder exists
+        if (-not (Test-Path -Path $currentPath)) {
+            # Create the folder if it does not exist
+            New-Item -ItemType Directory -Path $currentPath | Out-Null
+        }
+    }
+}
+
 function Resolve-Conflict-And-Merge {
     param (
         [string]$modFolder,
@@ -109,6 +130,10 @@ function Resolve-Conflict-And-Merge {
 		[string]$mergeType
     )
 
+    ###############################
+    #   Setup and mod unpacking   #
+    ###############################
+    
     # Define the merged folder name
     $mergedFolderName = ($conflictingMods | ForEach-Object { $_.BaseName }) -join "_"
     $mergedFolderPath = Join-Path -Path $modFolder -ChildPath $mergedFolderName
@@ -155,15 +180,26 @@ function Resolve-Conflict-And-Merge {
         }
     }
 
-    #delete the conflicting file from the merged folder
-    $conflictingFileFullPath = Join-Path -Path $mergedFolderPath -ChildPath $conflictingFile
-    if (Test-Path $conflictingFileFullPath) {
-        Remove-Item -Path $conflictingFileFullPath -Force
+    # Recursively search for the conflicting file within the folder and its subfolders
+    $filesToDelete = Get-ChildItem -Path $mergedFolderPath -Recurse -Filter $fileName -File
+    # Delete each instance of the file
+    foreach ($file in $filesToDelete) {
+        Remove-Item -Path $file.FullName -Force
     }
-
+    
 	Write-Host 
-    # Run kdiff3 to merge files
-    $outputFile = Join-Path -Path $mergedFolderPath -ChildPath $conflictingFile
+    ###############################
+    #  Run kdiff3 to merge files  #
+    ###############################
+    $basePakName = "pakchunk0-Windows"
+    $baseRelativePath = $baseFilePath.FullName.Substring($baseFilePath.FullName.IndexOf("pakchunk0-Windows") + $basePakName.Length)
+    $mergedRelativePath = Split-Path -Path $baseRelativePath -Parent
+    $mergedAbsolutePath = Join-Path -Path $mergedFolderPath -ChildPath $mergedRelativePath
+    $outputFile = Join-Path -Path $mergedAbsolutePath -ChildPath $conflictingFile
+
+    # Ensure the merged folder structure exists before merging, if not we will not be able to save the merged file
+    Ensure-MergedFolderStructure -mergedRelativePath $mergedRelativePath -mergedFolderPath $mergedFolderPath
+
     Write-Host "Merging $conflictingFile..."
     Write-Host 
     $auto = ""
@@ -215,6 +251,9 @@ function Resolve-Conflict-And-Merge {
 	}
 	Remove-Item -Path $mergedFolderPath -Recurse -Force -Confirm:$false
 
+    ###############################
+    #         Cleaning up         #
+    ###############################
 	Write-Host "Cleaning and backing up pak mods..."
     #rename conflicting mods with .bak extension and move them to a backup folder
     $backupFolder = Join-Path -Path $modFolder -ChildPath "~backup"
@@ -272,21 +311,26 @@ else{
 Write-Host "`nSelect folder containing Stalker2.exe"
 
 # Prompt user to select folder containing Stalker2.exe
-Add-Type -AssemblyName System.Windows.Forms
-$folderDialog = New-Object System.Windows.Forms.FolderBrowserDialog
-$folderDialog.Description = "Select folder containing Stalker2.exe"
-$folderDialog.ShowNewFolderButton = $false
+#Add-Type -AssemblyName System.Windows.Forms
+#$folderDialog = New-Object System.Windows.Forms.FolderBrowserDialog
+#$folderDialog.Description = "Select folder containing Stalker2.exe"
+#$folderDialog.ShowNewFolderButton = $false
+#
+#if ($folderDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+#    $installPath = $folderDialog.SelectedPath
+#    # Define the pak and mod folders based on the selected path
+#    $pakDir = Join-Path -Path $installPath -ChildPath "Stalker2\Content\Paks\"
+#    $modFolder = Join-Path -Path $pakDir -ChildPath "~mods\"
+#} else {
+#    Write-Host "No folder selected. Exiting script." -ForegroundColor Red
+#    pause
+#    exit
+#}
 
-if ($folderDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-    $installPath = $folderDialog.SelectedPath
-    # Define the pak and mod folders based on the selected path
-    $pakDir = Join-Path -Path $installPath -ChildPath "Stalker2\Content\Paks\"
-    $modFolder = Join-Path -Path $pakDir -ChildPath "~mods\"
-} else {
-    Write-Host "No folder selected. Exiting script." -ForegroundColor Red
-    pause
-    exit
-}
+$installPath = "C:\Games\S.T.A.L.K.E.R. 2 Heart of Chornobyl\"
+# Define the pak and mod folders based on the selected path
+$pakDir = Join-Path -Path $installPath -ChildPath "Stalker2\Content\Paks\"
+$modFolder = Join-Path -Path $pakDir -ChildPath "~mods\"
 
 $stalker2EXEPath = Join-Path -Path $installPath -ChildPath "Stalker2.exe"
 if (-Not (Test-Path $stalker2EXEPath))
@@ -348,6 +392,7 @@ foreach ($pakFile in $pakFiles) {
 
     # filter out everything but the file name
     $files = $rawOutput -replace '^.*"(?:.+/)*(.*)".*$', '$1'
+    $files = Split-Path -Path $files -Leaf
 
     foreach ($file in $files) {
         if ($results.ContainsKey($file)) {
