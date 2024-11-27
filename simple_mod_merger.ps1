@@ -136,7 +136,37 @@ function Resolve-Conflict-And-Merge {
     ###############################
     
     # Define the merged folder name
-    $mergedFolderName = ($conflictingMods | ForEach-Object { $_.BaseName }) -join "_"
+    #$mergedFolderName = "ZZZZZ_" + (($conflictingMods | ForEach-Object { $_.BaseName }) -join "_") + "_merged"
+    
+    # Define the merged folder name
+    $baseName = ""
+    $conflictingMods | ForEach-Object {
+        if ($_.BaseName -match "^ZZZZZ_.*_merged$") {
+            $baseName = $_.BaseName -replace "_merged$", ""
+        }
+    }
+    if (-not $baseName) {
+        $baseName = "ZZZZZ"
+    }
+    # Avoid name accumulation on the merged folder
+    foreach ($mod in $conflictingMods) {
+        # Strip the .pak extension
+        $modName = $mod.BaseName -replace "\.pak$", ""
+        # Skip mods that already have "_merged" in their name
+        if (-not $baseName.Contains($modName)) {
+            if($modName -match "^ZZZZZ_.*_merged$")
+            {
+                #strip the _merged suffix
+                $modName = $modName -replace "_merged$", ""
+                if($baseName.Contains($modName))
+                {
+                    continue
+                }
+            }
+            $baseName += "_$modName"
+        }
+    }
+    $mergedFolderName = "${baseName}_merged"
     $mergedFolderPath = Join-Path -Path $modFolder -ChildPath $mergedFolderName
 
     # Create the merged folder
@@ -209,9 +239,12 @@ function Resolve-Conflict-And-Merge {
         if ($mergeType -eq "2") {
             $auto = "--auto"
         }
+        else {
+            Write-Host "Manual merge mode. Please complete the merges and close kdiff3 to continue..."
+        }
 
         # Prepare kdiff3 arguments for manual merging
-        Write-Host "Starting manual merge. Please complete the merge and close kdiff3 to continue..."
+        
         $modName0 = Split-Path -Path $conflictingMods[0] -Leaf
         $modName1 = Split-Path -Path $conflictingMods[1] -Leaf
         Write-Host "Merging $modName0 and $modName1 with base..."
@@ -244,13 +277,19 @@ function Resolve-Conflict-And-Merge {
         foreach ($mod in $conflictingMods) {
             $unpackDir = $unpackedDirs[$mod.FullName]
             
+            # Skip deletion if the directory is the merge folder
+            if ($unpackDir -eq $mergedFolderPath) {
+                Write-Host "Skipping deletion of conflicting files in the merge folder."
+                continue
+            }
+
             foreach ($conflictingFile in $conflictingFiles) {
                 $conflictingFileFullPaths = Get-ChildItem -Path $unpackDir -Recurse -Filter $conflictingFile -File
                 foreach ($conflictingFileFullPath in $conflictingFileFullPaths) {
                     Remove-Item -Path $conflictingFileFullPath.FullName -Force
                 }
             }
-    
+
             # Check if the directory is empty after deleting conflicting files
             $remainingFiles = Get-ChildItem -Path $unpackDir -Recurse -File
             if ($remainingFiles.Count -gt 0) {
@@ -274,7 +313,11 @@ function Resolve-Conflict-And-Merge {
         $unpackDir = Join-Path -Path $modFolder -ChildPath $mod.BaseName
         Remove-Item -Path $unpackDir -Recurse -Force -Confirm:$false
     }
-    Remove-Item -Path $mergedFolderPath -Recurse -Force -Confirm:$false
+    # Remove the merged folder if it exists
+    if(Test-Path $mergedFolderPath)
+    {
+        Remove-Item -Path $mergedFolderPath -Recurse -Force -Confirm:$false
+    }
 
     if (-not $OnlyConflicts) {
         ###############################
