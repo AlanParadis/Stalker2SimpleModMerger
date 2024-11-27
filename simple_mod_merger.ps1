@@ -13,20 +13,22 @@ function Get-AES-Key
         [string]$aesKeySavedPath
     )
 	
-	$binariesPath = Join-Path -Path $installPath -ChildPath "Stalker2\Binaries\"
-	$Win64Path = Join-Path -Path $binariesPath -ChildPath "Win64\"
-	$WinGDKPath = Join-Path -Path $binariesPath -ChildPath "WinGDK\"
-	$stalkerExe = $null
-	# Define paths
-	if (Test-Path $Win64Path) {
-		$stalkerExe = Join-Path -Path $Win64Path -ChildPath "Stalker2-Win64-Shipping.exe"
-	}
-	if (Test-Path $WinGDKPath)
-	{
-		$stalkerExe = Join-Path -Path $WinGDKPath -ChildPath "Stalker2-Win64-Shipping.exe"
-	}
-	
-	$copiedExe = Join-Path -Path $AESDumpsterPath -ChildPath "Stalker2-Win64-Shipping.exe"
+	﻿$binariesPath = Join-Path -Path $installPath -ChildPath "Stalker2\Binaries\"
+    $Win64Path = Join-Path -Path $binariesPath -ChildPath "Win64\"
+    $WinGDKPath = Join-Path -Path $binariesPath -ChildPath "WinGDK\"
+    $stalkerExe = $null
+    $exeName = $null
+    # Define paths
+    if (Test-Path $Win64Path) {
+            $stalkerExe = Join-Path -Path $Win64Path -ChildPath "Stalker2-Win64-Shipping.exe"
+            $exeName = "Stalker2-Win64-Shipping.exe"
+    }
+    if (Test-Path $WinGDKPath) {
+            $stalkerExe = Join-Path -Path $WinGDKPath -ChildPath "Stalker2-WinGDK-Shipping.exe"
+            $exeName = "Stalker2-WinGDK-Shipping.exe"
+    }
+    
+    $copiedExe = Join-Path -Path $AESDumpsterPath -ChildPath $exeName
 	$aesDumpsterExe = Join-Path -Path $AESDumpsterPath -ChildPath "AESDumpster-Win64.exe"
 
 	# Ensure the AESDumpster directory exists
