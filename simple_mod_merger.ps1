@@ -312,13 +312,13 @@ function Resolve-Conflict-And-Merge {
         Write-Host 
         Write-Host "Cleaning and backing up pak mods..."
         # Rename conflicting mods with .bak extension and move them to a backup folder
-        $backupFolder = Join-Path -Path $tempModFolder -ChildPath "~backup"
+        $backupFolder = Join-Path -Path $modFolder -ChildPath "~backup"
         if (-not (Test-Path $backupFolder)) {
             New-Item -ItemType Directory -Path $backupFolder | Out-Null
         }
         foreach ($mod in $conflictingMods) {
             $modFileBak = "$($mod.BaseName).bak"
-            $fullModFileBakPath = Join-Path -Path $tempModFolder -ChildPath $modFileBak
+            $fullModFileBakPath = Join-Path -Path $modFolder -ChildPath $modFileBak
             Rename-Item -Path $($mod.FullName) -NewName $modFileBak -Force
             Move-Item -Path $fullModFileBakPath -Destination $backupFolder -Force
         }
