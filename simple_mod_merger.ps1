@@ -151,6 +151,8 @@ function Resolve-Conflict-And-Merge {
     $unpackedDirs = @{}
     if (-not (Test-Path $tempModFolder)) {
         New-Item -ItemType Directory -Path $tempModFolder | Out-Null
+        # empty the folder if not empty
+        Remove-Item -Path $tempModFolder\* -Recurse -Force -Confirm:$false
     }
 
     foreach ($mod in $conflictingMods) {
@@ -263,16 +265,15 @@ function Resolve-Conflict-And-Merge {
             foreach ($conflictingFile in $conflictingFiles) {
                 $conflictingFileFullPaths = Get-ChildItem -Path $unpackDir -Recurse -Filter $conflictingFile -File
                 foreach ($conflictingFileFullPath in $conflictingFileFullPaths) {
-                    Remove-Item -Path $conflictingFileFullPath.FullName -Force
+                    Remove-Item -Path $conflictingFileFullPath.FullName -Force -Recurse
                 }
             }
+            # Repacking the mod
+            Write-Host "Repacking $($mod.Name)..."
+            & "$RepackPath\repak.exe" pack $unpackDir
+            Write-Host 
             # Check if the directory is empty after deleting conflicting files
-            $remainingFiles = Get-ChildItem -Path $unpackDir -Recurse -File
-            if ($remainingFiles.Count -gt 0) {
-                Write-Host "Repacking $($mod.Name)..."
-                & "$RepackPath\repak.exe" pack $unpackDir
-                Write-Host 
-            } else {
+            if (-not (Get-ChildItem -Path $unpackDir -Recurse -File | Measure-Object).Count) {
                 Write-Host 
                 Write-Host "No remaining files in $($mod.Name) after deleting conflicts."
                 $deleteEmptyPak = Read-Host "Do you want to delete the empty .pak file for $($mod.Name)? (yes/no)"
@@ -287,6 +288,12 @@ function Resolve-Conflict-And-Merge {
                 }
             }
         }
+    }
+
+    #move back all the pak files to the mod folder
+    $tempPakFiles = Get-ChildItem -Path $tempModFolder -Filter *.pak
+    foreach ($tempPakFile in $tempPakFiles) {
+        Move-Item -Path $tempPakFile.FullName -Destination $modFolder -Force
     }
 
     foreach ($mod in $conflictingMods) {
