@@ -138,7 +138,7 @@ function Resolve-Conflict-And-Merge {
     ###############################
 
     # Define the merged folder name
-    $mergedFolderName = "zzzzzzzzzz-MERGED_MOD"
+    $mergedFolderName = "zzzzzzzzzz_MERGED_MOD"
     $tempModFolder = "C:\S2SMM"
     $mergedFolderPath = Join-Path -Path $tempModFolder -ChildPath $mergedFolderName
 
