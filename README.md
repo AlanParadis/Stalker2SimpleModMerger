@@ -27,4 +27,4 @@ It's based on the [mod conflict detection script](https://www.nexusmods.com/sta
 
 
 
-**Credit** : Alan Paradis, ChemBoy1, ﻿GHFear for [AESDumpster](https://github.com/GHFear/AESDumpster), Truman Kilen for [repak](https://github.com/trumank/repak), Joachim Eibl for [KDiff3](https://kdiff3.sourceforge.net/), DaPutzy for [mod conflict detection script](https://www.nexusmods.com/stalker2heartofchornobyl/mods/290)
+**Credit** : Alan Paradis, ﻿GHFear for [AESDumpster](https://github.com/GHFear/AESDumpster), Truman Kilen for [repak](https://github.com/trumank/repak), Joachim Eibl for [KDiff3](https://kdiff3.sourceforge.net/), DaPutzy for [mod conflict detection script](https://www.nexusmods.com/stalker2heartofchornobyl/mods/290)
