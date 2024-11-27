@@ -257,9 +257,15 @@ function Resolve-Conflict-And-Merge {
                 Write-Host "Repacking $($mod.Name)..."
                 & "$RepackPath\repak.exe" pack $unpackDir
             } else {
-                Write-Host "No remaining files in $($mod.Name) after deleting conflicts. Deleting the .pak file."
-                # Delete the .pak file
-                Remove-Item -Path $mod.FullName -Force
+                Write-Host "No remaining files in $($mod.Name) after deleting conflicts."
+                $deleteEmptyPak = Read-Host "Do you want to delete the empty .pak file for $($mod.Name)? (yes/no)"
+                if ($deleteEmptyPak -eq "yes" -Or $deleteEmptyPak -eq "y") {
+                    Write-Host "Deleting the .pak file."
+                    # Delete the .pak file
+                    Remove-Item -Path $mod.FullName -Force
+                } else {
+                    Write-Host "Keeping the empty .pak file."
+                }
             }
         }
     }
