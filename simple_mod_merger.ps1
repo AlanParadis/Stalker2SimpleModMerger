@@ -134,10 +134,7 @@ function Resolve-Conflict-And-Merge {
     ###############################
     #   Setup and mod unpacking   #
     ###############################
-    
-    # Define the merged folder name
-    #$mergedFolderName = "ZZZZZ_" + (($conflictingMods | ForEach-Object { $_.BaseName }) -join "_") + "_merged"
-    
+
     # Define the merged folder name
     $baseName = ""
     $conflictingMods | ForEach-Object {
@@ -154,12 +151,10 @@ function Resolve-Conflict-And-Merge {
         $modName = $mod.BaseName -replace "\.pak$", ""
         # Skip mods that already have "_merged" in their name
         if (-not $baseName.Contains($modName)) {
-            if($modName -match "^ZZZZZ_.*_merged$")
-            {
+            if($modName -match "^ZZZZZ_.*_merged$") {
                 #strip the _merged suffix
                 $modName = $modName -replace "_merged$", ""
-                if($baseName.Contains($modName))
-                {
+                if($baseName.Contains($modName)) {
                     continue
                 }
             }
@@ -167,7 +162,8 @@ function Resolve-Conflict-And-Merge {
         }
     }
     $mergedFolderName = "${baseName}_merged"
-    $mergedFolderPath = Join-Path -Path $modFolder -ChildPath $mergedFolderName
+    $tempModFolder = "C:\S2SMM"
+    $mergedFolderPath = Join-Path -Path $tempModFolder -ChildPath $mergedFolderName
 
     # Create the merged folder
     if (-not (Test-Path $mergedFolderPath)) {
@@ -176,12 +172,18 @@ function Resolve-Conflict-And-Merge {
 
     # Prepare paths for unpacking
     $unpackedDirs = @{}
+    if (-not (Test-Path $tempModFolder)) {
+        New-Item -ItemType Directory -Path $tempModFolder | Out-Null
+    }
+
     foreach ($mod in $conflictingMods) {
-        $unpackDir = Join-Path -Path $modFolder -ChildPath $mod.BaseName
+        $tempModPath = Join-Path -Path $tempModFolder -ChildPath $mod.Name
+        Move-Item -Path $mod.FullName -Destination $tempModPath -Force
+        $unpackDir = Join-Path -Path $tempModFolder -ChildPath $mod.BaseName
         if (-not (Test-Path $unpackDir)) {
             # Unpack the mod `.pak` file into its own folder
             Write-Host "Unpacking $($mod.Name)..."
-            & "$repackPath\repak.exe" unpack $mod.FullName
+            & "$repackPath\repak.exe" unpack $tempModPath
         }
         $unpackedDirs[$mod.FullName] = $unpackDir
     }
@@ -244,7 +246,6 @@ function Resolve-Conflict-And-Merge {
         }
 
         # Prepare kdiff3 arguments for manual merging
-        
         $modName0 = Split-Path -Path $conflictingMods[0] -Leaf
         $modName1 = Split-Path -Path $conflictingMods[1] -Leaf
         Write-Host "Merging $modName0 and $modName1 with base..."
@@ -310,12 +311,11 @@ function Resolve-Conflict-And-Merge {
     }
 
     foreach ($mod in $conflictingMods) {
-        $unpackDir = Join-Path -Path $modFolder -ChildPath $mod.BaseName
+        $unpackDir = Join-Path -Path $tempModFolder -ChildPath $mod.BaseName
         Remove-Item -Path $unpackDir -Recurse -Force -Confirm:$false
     }
     # Remove the merged folder if it exists
-    if(Test-Path $mergedFolderPath)
-    {
+    if(Test-Path $mergedFolderPath) {
         Remove-Item -Path $mergedFolderPath -Recurse -Force -Confirm:$false
     }
 
@@ -325,16 +325,22 @@ function Resolve-Conflict-And-Merge {
         ###############################
         Write-Host "Cleaning and backing up pak mods..."
         # Rename conflicting mods with .bak extension and move them to a backup folder
-        $backupFolder = Join-Path -Path $modFolder -ChildPath "~backup"
+        $backupFolder = Join-Path -Path $tempModFolder -ChildPath "~backup"
         if (-not (Test-Path $backupFolder)) {
             New-Item -ItemType Directory -Path $backupFolder | Out-Null
         }
         foreach ($mod in $conflictingMods) {
             $modFileBak = "$($mod.BaseName).bak"
-            $fullModFileBakPath = Join-Path -Path $modFolder -ChildPath $modFileBak
+            $fullModFileBakPath = Join-Path -Path $tempModFolder -ChildPath $modFileBak
             Rename-Item -Path $($mod.FullName) -NewName $modFileBak -Force
             Move-Item -Path $fullModFileBakPath -Destination $backupFolder -Force
         }
+    }
+
+    # Copy back all .pak files from the temporary folder to the real mod folder
+    $tempPakFiles = Get-ChildItem -Path $tempModFolder -Filter *.pak
+    foreach ($tempPakFile in $tempPakFiles) {
+        Move-Item -Path $tempPakFile.FullName -Destination $modFolder -Force
     }
 
     Write-Host "Done"
