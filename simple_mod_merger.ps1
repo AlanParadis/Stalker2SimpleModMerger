@@ -390,8 +390,8 @@ if (Test-Path $gameSavedPath) {
 	# Read the key from the file
 	$installPath = Get-Content $gameSavedPath
 	if ($installPath) {
-        $pakDir = Join-Path -Path $installPath -ChildPath "Stalker2\Content\Paks\"
-        $modFolder = Join-Path -Path $pakDir -ChildPath "~mods\"
+        $pakDir = Join-Path -Path $installPath -ChildPath "Stalker2\Content\Paks"
+        $modFolder = Join-Path -Path $pakDir -ChildPath "~mods"
 		Write-Output "Game path loaded: $installPath"
 	}
 } else {
@@ -406,8 +406,8 @@ if (Test-Path $gameSavedPath) {
     if ($folderDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
         $installPath = $folderDialog.SelectedPath
         # Define the pak and mod folders based on the selected path
-        $pakDir = Join-Path -Path $installPath -ChildPath "Stalker2\Content\Paks\"
-        $modFolder = Join-Path -Path $pakDir -ChildPath "~mods\"
+        $pakDir = Join-Path -Path $installPath -ChildPath "Stalker2\Content\Paks"
+        $modFolder = Join-Path -Path $pakDir -ChildPath "~mods"
         #write the game path
         $installPath | Out-File $gameSavedPath
         Write-Output "Game path saved"
