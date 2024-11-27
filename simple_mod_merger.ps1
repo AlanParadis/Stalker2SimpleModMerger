@@ -127,7 +127,8 @@ function Resolve-Conflict-And-Merge {
         [string]$RepackPath,
         [System.Collections.ArrayList]$conflictingFiles,
         [System.Collections.ArrayList]$conflictingMods,
-        [string]$mergeType
+        [string]$mergeType,
+        [switch]$OnlyConflicts
     )
 
     ###############################
@@ -155,16 +156,18 @@ function Resolve-Conflict-And-Merge {
         $unpackedDirs[$mod.FullName] = $unpackDir
     }
 
-    # Copy everything from all mods to the merged folder
-    foreach ($mod in $conflictingMods) {
-        # List all folders in the mod folder non-recursively
-        $modFiles = Get-ChildItem -Path $unpackedDirs[$mod.FullName]
-        foreach ($modFile in $modFiles) {
-            Copy-Item -Path $modFile.FullName -Destination $mergedFolderPath -Recurse -Force
+    if (-not $OnlyConflicts) {
+        # Copy everything from all mods to the merged folder
+        foreach ($mod in $conflictingMods) {
+            # List all folders in the mod folder non-recursively
+            $modFiles = Get-ChildItem -Path $unpackedDirs[$mod.FullName]
+            foreach ($modFile in $modFiles) {
+                Copy-Item -Path $modFile.FullName -Destination $mergedFolderPath -Recurse -Force
+            }
         }
     }
 
-    # Rechercher de manière récursive tous les fichiers en conflit dans le tableau conflictingFiles dans le dossier et ses sous-dossiers
+    # Recursively search for all conflicting files in the conflictingFiles array in the folder and its subfolders
     foreach ($conflictingFile in $conflictingFiles) {
         $conflictingFileFullPaths = Get-ChildItem -Path $mergedFolderPath -Recurse -Filter $conflictingFile -File
         foreach ($conflictingFileFullPath in $conflictingFileFullPaths) {
@@ -236,27 +239,55 @@ function Resolve-Conflict-And-Merge {
     & "$repackPath\repak.exe" pack $mergedFolderPath
     Write-Host "Merged mod created: $mergedFolderName.pak" -ForegroundColor Green
 
+    # repack without the conflicting files
+    if ($OnlyConflicts) {
+        foreach ($mod in $conflictingMods) {
+            $unpackDir = $unpackedDirs[$mod.FullName]
+            
+            foreach ($conflictingFile in $conflictingFiles) {
+                $conflictingFileFullPaths = Get-ChildItem -Path $unpackDir -Recurse -Filter $conflictingFile -File
+                foreach ($conflictingFileFullPath in $conflictingFileFullPaths) {
+                    Remove-Item -Path $conflictingFileFullPath.FullName -Force
+                }
+            }
+    
+            # Check if the directory is empty after deleting conflicting files
+            $remainingFiles = Get-ChildItem -Path $unpackDir -Recurse -File
+            if ($remainingFiles.Count -gt 0) {
+                Write-Host "Repacking $($mod.Name)..."
+                & "$RepackPath\repak.exe" pack $unpackDir
+            } else {
+                Write-Host "No remaining files in $($mod.Name) after deleting conflicts. Deleting the .pak file."
+                # Delete the .pak file
+                Remove-Item -Path $mod.FullName -Force
+            }
+        }
+    }
+
     foreach ($mod in $conflictingMods) {
         $unpackDir = Join-Path -Path $modFolder -ChildPath $mod.BaseName
         Remove-Item -Path $unpackDir -Recurse -Force -Confirm:$false
     }
     Remove-Item -Path $mergedFolderPath -Recurse -Force -Confirm:$false
 
-    ###############################
-    #         Cleaning up         #
-    ###############################
-    Write-Host "Cleaning and backing up pak mods..."
-    # Rename conflicting mods with .bak extension and move them to a backup folder
-    $backupFolder = Join-Path -Path $modFolder -ChildPath "~backup"
-    if (-not (Test-Path $backupFolder)) {
-        New-Item -ItemType Directory -Path $backupFolder | Out-Null
+    if (-not $OnlyConflicts) {
+        ###############################
+        #         Cleaning up         #
+        ###############################
+        Write-Host "Cleaning and backing up pak mods..."
+        # Rename conflicting mods with .bak extension and move them to a backup folder
+        $backupFolder = Join-Path -Path $modFolder -ChildPath "~backup"
+        if (-not (Test-Path $backupFolder)) {
+            New-Item -ItemType Directory -Path $backupFolder | Out-Null
+        }
+        foreach ($mod in $conflictingMods) {
+            $modFileBak = "$($mod.BaseName).bak"
+            $fullModFileBakPath = Join-Path -Path $modFolder -ChildPath $modFileBak
+            Rename-Item -Path $($mod.FullName) -NewName $modFileBak -Force
+            Move-Item -Path $fullModFileBakPath -Destination $backupFolder -Force
+        }
     }
-    foreach ($mod in $conflictingMods) {
-        $modFileBak = "$($mod.BaseName).bak"
-        $fullModFileBakPath = Join-Path -Path $modFolder -ChildPath $modFileBak
-        Rename-Item -Path $($mod.FullName) -NewName $modFileBak -Force
-        Move-Item -Path $fullModFileBakPath -Destination $backupFolder -Force
-    }
+
     Write-Host "Done"
 }
 
@@ -455,7 +486,12 @@ if ($conflict) {
 
     $mergeType = Read-Host "Do you want to merge all conflicting files? (manual merge (1) / auto merge (2) / skip (3))"
     if ($mergeType -eq "1" -or $mergeType -eq "2") {
-        Resolve-Conflict-And-Merge -modFolder $modFolder -unpackedDir $unpackedDir -KDiff3Folder $KDiff3Folder -RepackPath $RepackPath -conflictingFiles $conflictingFiles -conflictingMods $conflictingMods -mergeType $mergeType
+        $onlyConflicts = Read-Host "Do you want to merge only the conflicting files? (yes/no)"
+        $onlyConflictsSwitch = $false
+        if ($onlyConflicts -eq "yes" -Or $onlyConflicts -eq "y") {
+            $onlyConflictsSwitch = $true
+        }
+        Resolve-Conflict-And-Merge -modFolder $modFolder -unpackedDir $unpackedDir -KDiff3Folder $KDiff3Folder -RepackPath $RepackPath -conflictingFiles $conflictingFiles -conflictingMods $conflictingMods -mergeType $mergeType -OnlyConflicts:$onlyConflictsSwitch
     } else {
         Write-Host "Merge operation skipped." -ForegroundColor Cyan
     }
