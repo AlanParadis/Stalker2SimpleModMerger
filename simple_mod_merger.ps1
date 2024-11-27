@@ -125,9 +125,9 @@ function Resolve-Conflict-And-Merge {
         [string]$unpackedDir,
         [string]$KDiff3Folder,
         [string]$RepackPath,
-        [string]$conflictingFile,
+        [System.Collections.ArrayList]$conflictingFiles,
         [System.Collections.ArrayList]$conflictingMods,
-		[string]$mergeType
+        [string]$mergeType
     )
 
     ###############################
@@ -155,107 +155,98 @@ function Resolve-Conflict-And-Merge {
         $unpackedDirs[$mod.FullName] = $unpackDir
     }
 
-    # Find the base file from the original unpacked directory
-    $baseFilePath = Get-ChildItem -Path $unpackedDir -Recurse -Filter $conflictingFile | Select-Object -First 1
-    if (-not $baseFilePath) {
-        Write-Host "Base file for $conflictingFile not found in $unpackedDir." -ForegroundColor Red
-        return
-    }
-
-    # Collect paths of the conflicting files
-    $filePaths = @()
+    # Copy everything from all mods to the merged folder
     foreach ($mod in $conflictingMods) {
-        $modFile = Get-ChildItem -Path $unpackedDirs[$mod.FullName] -Recurse -Filter $conflictingFile | Select-Object -First 1
-        if ($modFile) {
-            $filePaths += $modFile.FullName
-        }
-    }
-
-    #copy everythign from all mods to the merged folder using
-    foreach ($mod in $conflictingMods) {
-        # list all folder in the mod folder non recursively
+        # List all folders in the mod folder non-recursively
         $modFiles = Get-ChildItem -Path $unpackedDirs[$mod.FullName]
         foreach ($modFile in $modFiles) {
             Copy-Item -Path $modFile.FullName -Destination $mergedFolderPath -Recurse -Force
         }
     }
 
-    # Recursively search for the conflicting file within the folder and its subfolders
-    $filesToDelete = Get-ChildItem -Path $mergedFolderPath -Recurse -Filter $fileName -File
-    # Delete each instance of the file
-    foreach ($file in $filesToDelete) {
-        Remove-Item -Path $file.FullName -Force
-    }
-    
-	Write-Host 
-    ###############################
-    #  Run kdiff3 to merge files  #
-    ###############################
-    $basePakName = "pakchunk0-Windows"
-    $baseRelativePath = $baseFilePath.FullName.Substring($baseFilePath.FullName.IndexOf("pakchunk0-Windows") + $basePakName.Length)
-    $mergedRelativePath = Split-Path -Path $baseRelativePath -Parent
-    $mergedAbsolutePath = Join-Path -Path $mergedFolderPath -ChildPath $mergedRelativePath
-    $outputFile = Join-Path -Path $mergedAbsolutePath -ChildPath $conflictingFile
-
-    # Ensure the merged folder structure exists before merging, if not we will not be able to save the merged file
-    Ensure-MergedFolderStructure -mergedRelativePath $mergedRelativePath -mergedFolderPath $mergedFolderPath
-
-    Write-Host "Merging $conflictingFile..."
-    Write-Host 
-    $auto = ""
-    if($mergeType -eq "2")
-    {
-        $auto = "--auto"
+    # Rechercher de manière récursive tous les fichiers en conflit dans le tableau conflictingFiles dans le dossier et ses sous-dossiers
+    foreach ($conflictingFile in $conflictingFiles) {
+        $conflictingFileFullPaths = Get-ChildItem -Path $mergedFolderPath -Recurse -Filter $conflictingFile -File
+        foreach ($conflictingFileFullPath in $conflictingFileFullPaths) {
+            Remove-Item -Path $conflictingFileFullPath.FullName -Force
+        }
     }
 
-    # Prepare kdiff3 arguments for manual merging
-    Write-Host "Starting manual merge. Please complete the merge and close kdiff3 to continue..."
-    Write-Host 
-    $modName0 = Split-Path -Path $conflictingMods[0] -Leaf
-    $modName1 = Split-Path -Path $conflictingMods[1] -Leaf
-    Write-Host "Merging $modName0 and $modName1 with base..."
-    # Start kdiff3 process and wait for it to finish
-    & "$kdiff3Folder\kdiff3.exe" $baseFilePath.FullName $filePaths[0] $filePaths[1] "-o" $outputFile $auto | Out-Null
-    Write-Host 
-    # Merge the resulting file with the remaining mods
-    for ($i = 2; $i -lt $filePaths.Count; $i++) {
-        #Rename the output file by adding a suffix _merged
-        $mergedFile = "$($baseFilePath.BaseName)_merged.cfg"
-        $outputDirectory = Split-Path -Path $conflictingFileFullPath -Parent
-        $mergedFilePath = Join-Path -Path $outputDirectory -ChildPath $mergedFile
-        Rename-Item -Path $outputFile -NewName $mergedFile -Force
-        $modName = Split-Path -Path $conflictingMods[$i] -Leaf
-        Write-Host "Merging merged file and $modName with base..."
-        & "$KDiff3Folder\kdiff3.exe" $baseFilePath.FullName $mergedFilePath $filePaths[$i] "-o" $outputFile $auto | Out-Null
-        # Delete the merged file
-        Remove-Item -Path $mergedFilePath -Force
-        Write-Host 
-    }
-	
-    Write-Host "Manual merge completed for $conflictingFile." -ForegroundColor Green
-    Write-Host
-	
-	pause
-	Write-Host 
+    foreach ($conflictingFile in $conflictingFiles) {
+        # Find the base file from the original unpacked directory
+        $baseFilePath = Get-ChildItem -Path $unpackedDir -Recurse -Filter $conflictingFile | Select-Object -First 1
+        if (-not $baseFilePath) {
+            Write-Host "Base file for $conflictingFile not found in $unpackedDir." -ForegroundColor Red
+            continue
+        }
 
-    # Pack the merged folder into a `.pak` file
+        # Collect paths of the conflicting files
+        $filePaths = @()
+        foreach ($mod in $conflictingMods) {
+            $modFile = Get-ChildItem -Path $unpackedDirs[$mod.FullName] -Recurse -Filter $conflictingFile | Select-Object -First 1
+            if ($modFile) {
+                $filePaths += $modFile.FullName
+            }
+        }
+
+        ###############################
+        #  Run kdiff3 to merge files  #
+        ###############################
+        $basePakName = "pakchunk0-Windows"
+        $baseRelativePath = $baseFilePath.FullName.Substring($baseFilePath.FullName.IndexOf("pakchunk0-Windows") + $basePakName.Length)
+        $mergedRelativePath = Split-Path -Path $baseRelativePath -Parent
+        $mergedAbsolutePath = Join-Path -Path $mergedFolderPath -ChildPath $mergedRelativePath
+        $outputFile = Join-Path -Path $mergedAbsolutePath -ChildPath $conflictingFile
+
+        # Ensure the merged folder structure exists before merging, if not we will not be able to save the merged file
+        Ensure-MergedFolderStructure -mergedRelativePath $mergedRelativePath -mergedFolderPath $mergedFolderPath
+
+        Write-Host "Merging $conflictingFile..."
+        $auto = ""
+        if ($mergeType -eq "2") {
+            $auto = "--auto"
+        }
+
+        # Prepare kdiff3 arguments for manual merging
+        Write-Host "Starting manual merge. Please complete the merge and close kdiff3 to continue..."
+        $modName0 = Split-Path -Path $conflictingMods[0] -Leaf
+        $modName1 = Split-Path -Path $conflictingMods[1] -Leaf
+        Write-Host "Merging $modName0 and $modName1 with base..."
+        # Start kdiff3 process and wait for it to finish
+        & "$kdiff3Folder\kdiff3.exe" $baseFilePath.FullName $filePaths[0] $filePaths[1] "-o" $outputFile $auto | Out-Null
+
+        # Merge the resulting file with the remaining mods
+        for ($i = 2; $i -lt $filePaths.Count; $i++) {
+            # Rename the output file by adding a suffix _merged
+            $mergedFile = "$($baseFilePath.BaseName)_merged.cfg"
+            $outputDirectory = Split-Path -Path $conflictingFileFullPath -Parent
+            $mergedFilePath = Join-Path -Path $outputDirectory -ChildPath $mergedFile
+            Rename-Item -Path $outputFile -NewName $mergedFile -Force
+            $modName = Split-Path -Path $conflictingMods[$i] -Leaf
+            Write-Host "Merging merged file and $modName with base..."
+            & "$KDiff3Folder\kdiff3.exe" $baseFilePath.FullName $mergedFilePath $filePaths[$i] "-o" $outputFile $auto | Out-Null
+            # Delete the merged file
+            Remove-Item -Path $mergedFilePath -Force
+        }
+
+        Write-Host "Manual merge completed for $conflictingFile." -ForegroundColor Green
+    }
+
     Write-Host "Packing merged files into $mergedFolderName.pak..."
     & "$repackPath\repak.exe" pack $mergedFolderPath
-    Write-Host 
     Write-Host "Merged mod created: $mergedFolderName.pak" -ForegroundColor Green
-    Write-Host 
-	
-	foreach ($mod in $conflictingMods) {
-		$unpackDir = Join-Path -Path $modFolder -ChildPath $mod.BaseName
-		Remove-Item -Path $unpackDir -Recurse -Force -Confirm:$false
-	}
-	Remove-Item -Path $mergedFolderPath -Recurse -Force -Confirm:$false
+
+    foreach ($mod in $conflictingMods) {
+        $unpackDir = Join-Path -Path $modFolder -ChildPath $mod.BaseName
+        Remove-Item -Path $unpackDir -Recurse -Force -Confirm:$false
+    }
+    Remove-Item -Path $mergedFolderPath -Recurse -Force -Confirm:$false
 
     ###############################
     #         Cleaning up         #
     ###############################
-	Write-Host "Cleaning and backing up pak mods..."
-    #rename conflicting mods with .bak extension and move them to a backup folder
+    Write-Host "Cleaning and backing up pak mods..."
+    # Rename conflicting mods with .bak extension and move them to a backup folder
     $backupFolder = Join-Path -Path $modFolder -ChildPath "~backup"
     if (-not (Test-Path $backupFolder)) {
         New-Item -ItemType Directory -Path $backupFolder | Out-Null
@@ -266,8 +257,7 @@ function Resolve-Conflict-And-Merge {
         Rename-Item -Path $($mod.FullName) -NewName $modFileBak -Force
         Move-Item -Path $fullModFileBakPath -Destination $backupFolder -Force
     }
-	Write-Host "Done"
-	Write-Host 
+    Write-Host "Done"
 }
 
 ################
@@ -391,12 +381,11 @@ $pakFiles = Get-ChildItem -Recurse -Path $modFolder -Filter "*.pak"
 $unpackedDir = Join-Path -Path $pakDir -ChildPath "pakchunk0-Windows"
 
 if (-Not (Test-Path $unpackedDir)) {
-	Write-Host "`nUnpacking default files..."
-	Unpack-And-Clean -RepackPath $RepackPath -pakDir $pakDir -unpackedDir $unpackedDir
+    Write-Host "`nUnpacking default files..."
+    Unpack-And-Clean -RepackPath $RepackPath -pakDir $pakDir -unpackedDir $unpackedDir
 }
-else
-{
-	Write-Host "Unpacked pakchunk0-Windows found."
+else {
+    Write-Host "Unpacked pakchunk0-Windows found."
 }
 Write-Host 
 
@@ -404,10 +393,13 @@ Write-Host
 Write-Host "Total .pak files found: $($pakFiles.Count)" -ForegroundColor Cyan
 
 $results = [System.Collections.Hashtable]::new()
+$conflictingMods = [System.Collections.ArrayList]::new()
+$conflictingFiles = [System.Collections.ArrayList]::new()
+$modFileDictionary = [System.Collections.Hashtable]::new()
 
 foreach ($pakFile in $pakFiles) {
     # list all files in the .pak file
-    $rawOutput = .\repak_cli-x86_64-pc-windows-msvc\repak.exe list $pakFile.FullName
+    $rawOutput = & "$RepackPath\repak.exe" list $pakFile.FullName
 
     # filter out everything but the file name
     $files = $rawOutput -replace '^.*"(?:.+/)*(.*)".*$', '$1'
@@ -426,6 +418,9 @@ foreach ($pakFile in $pakFiles) {
             $results[$file] = $list
         }
     }
+
+    # Add to modFileDictionary
+    $modFileDictionary[$pakFile] = $files
 }
 
 # do we have a conflict
@@ -435,26 +430,37 @@ foreach ($result in $results.GetEnumerator()) {
     # more than one mod changes the given file (aka conflict)
     if ($result.Value.Count -gt 1) {
         $conflict = $true
-        Write-Host "Conflict in file: $($result.Name) - by mods:"
+        [void]$conflictingFiles.Add($result.Name)
         foreach ($modFile in $result.Value) {
-            # remove absolute path before printing
-            $modPretty = $modFile.FullName.Replace($modFolder, "")
-            Write-Host "  - $modPretty"
+            if (-Not($conflictingMods.Contains($modFile))) {
+                [void]$conflictingMods.Add($modFile)
+            }
         }
-		Write-Host
-		# Prompt user for merge
-		$mergeType = Read-Host "Do you want to merge files? (manual merge (1) / auto merge (2) / skip (3)"
-		if ($mergeType -eq "1" -or $mergeType -eq "2") {
-			Resolve-Conflict-And-Merge -modFolder $modFolder -unpackedDir $unpackedDir -KDiff3Folder $KDiff3Folder -RepackPath $RepackPath -conflictingFile $result.Name -conflictingMods $result.Value -mergeType $mergeType
-		} else {
-			Write-Host "Merge operation skipped." -ForegroundColor Cyan
-		}
-        Write-Host
     }
 }
 
-if (-not $conflict) {
-    Write-Host "No conflicts found among the mod files." -ForegroundColor Green
+# Output conflicting mods and files
+if ($conflict) {
+    Write-Host "Conflicting mods:"
+    foreach ($mod in $conflictingMods) {
+        Write-Host "  - $($mod.FullName)"
+    }
+    Write-Host
+
+    Write-Host "Conflicting files:"
+    foreach ($file in $conflictingFiles) {
+        Write-Host "  - $file"
+    }
+    Write-Host
+
+    $mergeType = Read-Host "Do you want to merge all conflicting files? (manual merge (1) / auto merge (2) / skip (3))"
+    if ($mergeType -eq "1" -or $mergeType -eq "2") {
+        Resolve-Conflict-And-Merge -modFolder $modFolder -unpackedDir $unpackedDir -KDiff3Folder $KDiff3Folder -RepackPath $RepackPath -conflictingFiles $conflictingFiles -conflictingMods $conflictingMods -mergeType $mergeType
+    } else {
+        Write-Host "Merge operation skipped." -ForegroundColor Cyan
+    }
+} else {
+    Write-Host "No conflicts found." -ForegroundColor Green
 }
 
 pause
