@@ -17,16 +17,18 @@ function Get-AES-Key
 	$Win64Path = Join-Path -Path $binariesPath -ChildPath "Win64\"
 	$WinGDKPath = Join-Path -Path $binariesPath -ChildPath "WinGDK\"
 	$stalkerExe = $null
+    $exeName = $null
 	# Define paths
 	if (Test-Path $Win64Path) {
 		$stalkerExe = Join-Path -Path $Win64Path -ChildPath "Stalker2-Win64-Shipping.exe"
+        $exeName = "Stalker2-Win64-Shipping.exe"
 	}
-	if (Test-Path $WinGDKPath)
-	{
-		$stalkerExe = Join-Path -Path $WinGDKPath -ChildPath "Stalker2-Win64-Shipping.exe"
+	if (Test-Path $WinGDKPath) {
+		$stalkerExe = Join-Path -Path $WinGDKPath -ChildPath "Stalker2-WinGDK-Shipping.exe"
+        $exeName = "Stalker2-WinGDK-Shipping.exe"
 	}
 	
-	$copiedExe = Join-Path -Path $AESDumpsterPath -ChildPath "Stalker2-Win64-Shipping.exe"
+	$copiedExe = Join-Path -Path $AESDumpsterPath -ChildPath $exeName
 	$aesDumpsterExe = Join-Path -Path $AESDumpsterPath -ChildPath "AESDumpster-Win64.exe"
 
 	# Ensure the AESDumpster directory exists
@@ -135,7 +137,7 @@ function Resolve-Conflict-And-Merge {
     ###############################
     
     # Define the merged folder name
-    $mergedFolderName = ($conflictingMods | ForEach-Object { $_.BaseName }) -join "_"
+    $mergedFolderName = "ZZZZZ-MERGED_MOD"
     $mergedFolderPath = Join-Path -Path $modFolder -ChildPath $mergedFolderName
 
     # Create the merged folder
@@ -146,7 +148,8 @@ function Resolve-Conflict-And-Merge {
     # Prepare paths for unpacking
     $unpackedDirs = @{}
     foreach ($mod in $conflictingMods) {
-        $unpackDir = Join-Path -Path $modFolder -ChildPath $mod.BaseName
+        $folderName = $mod.FullName -replace '\.[^.]+$', ''
+        $unpackDir = $folderName
         if (-not (Test-Path $unpackDir)) {
             # Unpack the mod `.pak` file into its own folder
             Write-Host "Unpacking $($mod.Name)..."
@@ -237,26 +240,12 @@ function Resolve-Conflict-And-Merge {
     Write-Host "Merged mod created: $mergedFolderName.pak" -ForegroundColor Green
 
     foreach ($mod in $conflictingMods) {
-        $unpackDir = Join-Path -Path $modFolder -ChildPath $mod.BaseName
+        $folderName = $mod.FullName -replace '\.[^.]+$', ''
+        $unpackDir = $folderName
         Remove-Item -Path $unpackDir -Recurse -Force -Confirm:$false
     }
     Remove-Item -Path $mergedFolderPath -Recurse -Force -Confirm:$false
 
-    ###############################
-    #         Cleaning up         #
-    ###############################
-    Write-Host "Cleaning and backing up pak mods..."
-    # Rename conflicting mods with .bak extension and move them to a backup folder
-    $backupFolder = Join-Path -Path $modFolder -ChildPath "~backup"
-    if (-not (Test-Path $backupFolder)) {
-        New-Item -ItemType Directory -Path $backupFolder | Out-Null
-    }
-    foreach ($mod in $conflictingMods) {
-        $modFileBak = "$($mod.BaseName).bak"
-        $fullModFileBakPath = Join-Path -Path $modFolder -ChildPath $modFileBak
-        Rename-Item -Path $($mod.FullName) -NewName $modFileBak -Force
-        Move-Item -Path $fullModFileBakPath -Destination $backupFolder -Force
-    }
     Write-Host "Done"
 }
 
@@ -310,8 +299,8 @@ if (Test-Path $gameSavedPath) {
 	# Read the key from the file
 	$installPath = Get-Content $gameSavedPath
 	if ($installPath) {
-        $pakDir = Join-Path -Path $installPath -ChildPath "Stalker2\Content\Paks\"
-        $modFolder = Join-Path -Path $pakDir -ChildPath "~mods\"
+        $pakDir = Join-Path -Path $installPath -ChildPath "Stalker2\Content\Paks"
+        $modFolder = Join-Path -Path $pakDir -ChildPath "~mods"
 		Write-Output "Game path loaded: $installPath"
 	}
 } else {
@@ -326,8 +315,8 @@ if (Test-Path $gameSavedPath) {
     if ($folderDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
         $installPath = $folderDialog.SelectedPath
         # Define the pak and mod folders based on the selected path
-        $pakDir = Join-Path -Path $installPath -ChildPath "Stalker2\Content\Paks\"
-        $modFolder = Join-Path -Path $pakDir -ChildPath "~mods\"
+        $pakDir = Join-Path -Path $installPath -ChildPath "Stalker2\Content\Paks"
+        $modFolder = Join-Path -Path $pakDir -ChildPath "~mods"
         #write the game path
         $installPath | Out-File $gameSavedPath
         Write-Output "Game path saved"
