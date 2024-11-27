@@ -136,32 +136,7 @@ function Resolve-Conflict-And-Merge {
     ###############################
 
     # Define the merged folder name
-    $baseName = ""
-    $conflictingMods | ForEach-Object {
-        if ($_.BaseName -match "^ZZZZZ_.*_merged$") {
-            $baseName = $_.BaseName -replace "_merged$", ""
-        }
-    }
-    if (-not $baseName) {
-        $baseName = "ZZZZZ"
-    }
-    # Avoid name accumulation on the merged folder
-    foreach ($mod in $conflictingMods) {
-        # Strip the .pak extension
-        $modName = $mod.BaseName -replace "\.pak$", ""
-        # Skip mods that already have "_merged" in their name
-        if (-not $baseName.Contains($modName)) {
-            if($modName -match "^ZZZZZ_.*_merged$") {
-                #strip the _merged suffix
-                $modName = $modName -replace "_merged$", ""
-                if($baseName.Contains($modName)) {
-                    continue
-                }
-            }
-            $baseName += "_$modName"
-        }
-    }
-    $mergedFolderName = "${baseName}_merged"
+    $mergedFolderName = "zzzzzzzzzz-MERGED_MOD"
     $tempModFolder = "C:\S2SMM"
     $mergedFolderPath = Join-Path -Path $tempModFolder -ChildPath $mergedFolderName
 
@@ -243,68 +218,70 @@ function Resolve-Conflict-And-Merge {
         }
         else {
             Write-Host "Manual merge mode. Please complete the merges and close kdiff3 to continue..."
+            Write-Host 
         }
 
         # Prepare kdiff3 arguments for manual merging
         $modName0 = Split-Path -Path $conflictingMods[0] -Leaf
         $modName1 = Split-Path -Path $conflictingMods[1] -Leaf
         Write-Host "Merging $modName0 and $modName1 with base..."
+        Write-Host 
         # Start kdiff3 process and wait for it to finish
         & "$kdiff3Folder\kdiff3.exe" $baseFilePath.FullName $filePaths[0] $filePaths[1] "-o" $outputFile $auto | Out-Null
-
         # Merge the resulting file with the remaining mods
         for ($i = 2; $i -lt $filePaths.Count; $i++) {
             # Rename the output file by adding a suffix _merged
             $mergedFile = "$($baseFilePath.BaseName)_merged.cfg"
-            $outputDirectory = Split-Path -Path $conflictingFileFullPath -Parent
-            $mergedFilePath = Join-Path -Path $outputDirectory -ChildPath $mergedFile
+            $mergedFilePath = Join-Path -Path $mergedAbsolutePath -ChildPath $mergedFile
             Rename-Item -Path $outputFile -NewName $mergedFile -Force
             $modName = Split-Path -Path $conflictingMods[$i] -Leaf
             Write-Host "Merging merged file and $modName with base..."
+            Write-Host 
             & "$KDiff3Folder\kdiff3.exe" $baseFilePath.FullName $mergedFilePath $filePaths[$i] "-o" $outputFile $auto | Out-Null
             # Delete the merged file
             Remove-Item -Path $mergedFilePath -Force
+            
         }
 
         Write-Host "Manual merge completed for $conflictingFile." -ForegroundColor Green
     }
-
+    Write-Host 
     Write-Host "Packing merged files into $mergedFolderName.pak..."
     & "$repackPath\repak.exe" pack $mergedFolderPath
     Write-Host "Merged mod created: $mergedFolderName.pak" -ForegroundColor Green
-
+    Write-Host 
     # repack without the conflicting files
     if ($OnlyConflicts) {
         foreach ($mod in $conflictingMods) {
             $unpackDir = $unpackedDirs[$mod.FullName]
-            
             # Skip deletion if the directory is the merge folder
             if ($unpackDir -eq $mergedFolderPath) {
-                Write-Host "Skipping deletion of conflicting files in the merge folder."
                 continue
             }
-
             foreach ($conflictingFile in $conflictingFiles) {
                 $conflictingFileFullPaths = Get-ChildItem -Path $unpackDir -Recurse -Filter $conflictingFile -File
                 foreach ($conflictingFileFullPath in $conflictingFileFullPaths) {
                     Remove-Item -Path $conflictingFileFullPath.FullName -Force
                 }
             }
-
             # Check if the directory is empty after deleting conflicting files
             $remainingFiles = Get-ChildItem -Path $unpackDir -Recurse -File
             if ($remainingFiles.Count -gt 0) {
                 Write-Host "Repacking $($mod.Name)..."
                 & "$RepackPath\repak.exe" pack $unpackDir
+                Write-Host 
             } else {
+                Write-Host 
                 Write-Host "No remaining files in $($mod.Name) after deleting conflicts."
                 $deleteEmptyPak = Read-Host "Do you want to delete the empty .pak file for $($mod.Name)? (yes/no)"
                 if ($deleteEmptyPak -eq "yes" -Or $deleteEmptyPak -eq "y") {
                     Write-Host "Deleting the .pak file."
                     # Delete the .pak file
                     Remove-Item -Path $mod.FullName -Force
+                    Write-Host 
                 } else {
                     Write-Host "Keeping the empty .pak file."
+                    Write-Host 
                 }
             }
         }
@@ -323,6 +300,7 @@ function Resolve-Conflict-And-Merge {
         ###############################
         #         Cleaning up         #
         ###############################
+        Write-Host 
         Write-Host "Cleaning and backing up pak mods..."
         # Rename conflicting mods with .bak extension and move them to a backup folder
         $backupFolder = Join-Path -Path $tempModFolder -ChildPath "~backup"
@@ -343,7 +321,7 @@ function Resolve-Conflict-And-Merge {
         Move-Item -Path $tempPakFile.FullName -Destination $modFolder -Force
     }
 
-    Write-Host "Done"
+    Write-Host "Done" -ForegroundColor Green
 }
 
 ################
