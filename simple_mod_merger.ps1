@@ -82,7 +82,8 @@ function Unpack-And-Clean {
 	
 	# Run the unpack command
     Write-Host "Unpacking pakchunk0-Windows.pak. This may take some time..." -ForegroundColor Yellow
-    & "$RepackPath\repak.exe" --aes-key $aesKey unpack "$pakDir\pakchunk0-Windows.pak"
+    $arguments = "--aes-key $aesKey unpack `"$pakDir\pakchunk0-Windows.pak`""
+    Start-Process -FilePath "$RepackPath\repak.exe" -ArgumentList $arguments -Wait -NoNewWindow
     
 	if (Test-Path $unpackedDir) {
 		Write-Host "Cleaning up useless files. This may take some time..." -ForegroundColor Yellow
@@ -135,10 +136,11 @@ function Resolve-Conflict-And-Merge {
     ###############################
     #   Setup and mod unpacking   #
     ###############################
-    
+
     # Define the merged folder name
-    $mergedFolderName = "ZZZZZ-MERGED_MOD"
-    $mergedFolderPath = Join-Path -Path $modFolder -ChildPath $mergedFolderName
+    $mergedFolderName = "zzzzzzzzzz_MERGED_MOD"
+    $tempModFolder = "C:\S2SMM"
+    $mergedFolderPath = Join-Path -Path $tempModFolder -ChildPath $mergedFolderName
 
     # Create the merged folder
     if (-not (Test-Path $mergedFolderPath)) {
@@ -146,14 +148,22 @@ function Resolve-Conflict-And-Merge {
     }
 
     # Prepare paths for unpacking
+    if (-not (Test-Path $tempModFolder)) {
+        New-Item -ItemType Directory -Path $tempModFolder | Out-Null
+        # empty the folder if not empty
+        Remove-Item -Path $tempModFolder\* -Recurse -Force -Confirm:$false
+    }
+
     $unpackedDirs = @{}
     foreach ($mod in $conflictingMods) {
-        $folderName = $mod.FullName -replace '\.[^.]+$', ''
-        $unpackDir = $folderName
+        $tempModPath = Join-Path -Path $tempModFolder -ChildPath $mod.Name
+        Move-Item -Path $mod.FullName -Destination $tempModPath -Force
+        $unpackDir = Join-Path -Path $tempModFolder -ChildPath $mod.BaseName
         if (-not (Test-Path $unpackDir)) {
             # Unpack the mod `.pak` file into its own folder
             Write-Host "Unpacking $($mod.Name)..."
-            & "$repackPath\repak.exe" unpack $mod.FullName
+            $arguments = "unpack `"$tempModPath`""
+            Start-Process -FilePath "$RepackPath\repak.exe" -ArgumentList $arguments -Wait -NoNewWindow
         }
         $unpackedDirs[$mod.FullName] = $unpackDir
     }
@@ -216,7 +226,10 @@ function Resolve-Conflict-And-Merge {
         $modName1 = Split-Path -Path $conflictingMods[1] -Leaf
         Write-Host "Merging $modName0 and $modName1 with base..."
         # Start kdiff3 process and wait for it to finish
-        & "$kdiff3Folder\kdiff3.exe" $baseFilePath.FullName $filePaths[0] $filePaths[1] "-o" $outputFile $auto | Out-Null
+        $filePath0 = $filePaths[0]
+        $filePath1 = $filePaths[1]
+        $arguments = "`"$($baseFilePath.FullName)`" `"$filePath0`" `"$filePath1`" -o `"$outputFile`" $auto"
+        Start-Process -FilePath "$kdiff3Folder\kdiff3.exe" -ArgumentList $arguments -Wait -NoNewWindow
 
         # Merge the resulting file with the remaining mods
         for ($i = 2; $i -lt $filePaths.Count; $i++) {
@@ -227,7 +240,9 @@ function Resolve-Conflict-And-Merge {
             Rename-Item -Path $outputFile -NewName $mergedFile -Force
             $modName = Split-Path -Path $conflictingMods[$i] -Leaf
             Write-Host "Merging merged file and $modName with base..."
-            & "$KDiff3Folder\kdiff3.exe" $baseFilePath.FullName $mergedFilePath $filePaths[$i] "-o" $outputFile $auto | Out-Null
+            $filePathI = $filePaths[$i]
+            $arguments = "`"$($baseFilePath.FullName)`" `"$mergedFilePath`" `"$filePathI`" -o `"$outputFile`" $auto"
+            Start-Process -FilePath "$kdiff3Folder\kdiff3.exe" -ArgumentList $arguments -Wait -NoNewWindow
             # Delete the merged file
             Remove-Item -Path $mergedFilePath -Force
         }
@@ -236,15 +251,28 @@ function Resolve-Conflict-And-Merge {
     }
 
     Write-Host "Packing merged files into $mergedFolderName.pak..."
-    & "$repackPath\repak.exe" pack $mergedFolderPath
+    $arguments = "pack `"$mergedFolderPath`""
+    Start-Process -FilePath "$RepackPath\repak.exe" -ArgumentList $arguments -Wait -NoNewWindow
     Write-Host "Merged mod created: $mergedFolderName.pak" -ForegroundColor Green
 
+    #move back all the pak files to the mod folder
+    $tempPakFiles = Get-ChildItem -Path $tempModFolder -Filter *.pak
+    foreach ($tempPakFile in $tempPakFiles) {
+        Move-Item -Path $tempPakFile.FullName -Destination $modFolder -Force
+    }
     foreach ($mod in $conflictingMods) {
-        $folderName = $mod.FullName -replace '\.[^.]+$', ''
-        $unpackDir = $folderName
+        $unpackDir = Join-Path -Path $tempModFolder -ChildPath $mod.BaseName
         Remove-Item -Path $unpackDir -Recurse -Force -Confirm:$false
     }
-    Remove-Item -Path $mergedFolderPath -Recurse -Force -Confirm:$false
+    # Remove the merged folder if it exists
+    if(Test-Path $mergedFolderPath) {
+        Remove-Item -Path $mergedFolderPath -Recurse -Force -Confirm:$false
+    }
+    # Copy back all .pak files from the temporary folder to the real mod folder
+    $tempPakFiles = Get-ChildItem -Path $tempModFolder -Filter *.pak
+    foreach ($tempPakFile in $tempPakFiles) {
+        Move-Item -Path $tempPakFile.FullName -Destination $modFolder -Force
+    }
 
     Write-Host "Done"
 }
@@ -388,8 +416,10 @@ $modFileDictionary = [System.Collections.Hashtable]::new()
 
 foreach ($pakFile in $pakFiles) {
     # list all files in the .pak file
-    $rawOutput = & "$RepackPath\repak.exe" list $pakFile.FullName
-
+    $arguments = "list `"$($pakFile.FullName)`""
+    $RepackEXE = "$RepackPath\repak.exe"
+    $rawOutput = cmd /c "$RepackEXE $arguments" 2>&1
+    
     # filter out everything but the file name
     $files = $rawOutput -replace '^.*"(?:.+/)*(.*)".*$', '$1'
 
