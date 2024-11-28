@@ -148,13 +148,13 @@ function Resolve-Conflict-And-Merge {
     }
 
     # Prepare paths for unpacking
-    $unpackedDirs = @{}
     if (-not (Test-Path $tempModFolder)) {
         New-Item -ItemType Directory -Path $tempModFolder | Out-Null
         # empty the folder if not empty
         Remove-Item -Path $tempModFolder\* -Recurse -Force -Confirm:$false
     }
 
+	$unpackedDirs = @{}
     foreach ($mod in $conflictingMods) {
         $tempModPath = Join-Path -Path $tempModFolder -ChildPath $mod.Name
         Move-Item -Path $mod.FullName -Destination $tempModPath -Force
