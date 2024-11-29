@@ -42,7 +42,6 @@ function Get-AES-Key
     }
     
     $copiedExe = [System.IO.Path]::Combine($AESDumpsterPath,$exeName)
-	$aesDumpsterExe = [System.IO.Path]::Combine($AESDumpsterPath, $AESDumpsterExe)
 
 	# Ensure the AESDumpster directory exists
 	if (!(Test-LongPath -Path $AESDumpsterPath)) {
@@ -97,7 +96,7 @@ function Unpack-And-Clean {
     Write-Host "Unpacking pakchunk0-Windows.pak. This may take some time..." -ForegroundColor Yellow
     $pakchunk0 = [System.IO.Path]::Combine($pakDir,"pakchunk0-Windows.pak")
     $pakchunk0 = $pakchunk0.Substring(4)
-    & $RepackExe --aes-key $aesKey unpack $pakchunk0
+    & $RepackExe --aes-key $aesKey "unpack" $pakchunk0
     
 	if (Test-LongPath -Path $basePakdDir) {
         Write-Host "Cleaning up useless files. This may take some time..." -ForegroundColor Yellow
