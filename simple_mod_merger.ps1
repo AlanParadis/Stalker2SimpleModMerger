@@ -77,7 +77,7 @@ function Unpack-And-Clean {
     param (
         [string]$RepackPath,
         [string]$pakDir,
-        [string]$unpackedDir
+        [string]$basePakdDir
     )
 	
 	# Run the unpack command
@@ -85,13 +85,13 @@ function Unpack-And-Clean {
     $arguments = "--aes-key $aesKey unpack `"$pakDir\pakchunk0-Windows.pak`""
     Start-Process -FilePath "$RepackPath\repak.exe" -ArgumentList $arguments -Wait -NoNewWindow
     
-	if (Test-Path $unpackedDir) {
+	if (Test-Path $basePakdDir) {
 		Write-Host "Cleaning up useless files. This may take some time..." -ForegroundColor Yellow
         # Delete all files that are not .cfg
-        Get-ChildItem -Path $unpackedDir -Recurse -File | Where-Object { $_.Extension -ne ".cfg" } | Remove-Item -Force
+        Get-ChildItem -Path $basePakdDir -Recurse -File | Where-Object { $_.Extension -ne ".cfg" } | Remove-Item -Force
         # Recursively delete empty folders until no more remain
 		do {
-			$emptyFolders = Get-ChildItem -Path $unpackedDir -Recurse -Directory | Where-Object { (Get-ChildItem -Path $_.FullName).Count -eq 0 }
+			$emptyFolders = Get-ChildItem -Path $basePakdDir -Recurse -Directory | Where-Object { (Get-ChildItem -Path $_.FullName).Count -eq 0 }
 			$emptyFolders | Remove-Item -Force
 		} while ($emptyFolders.Count -gt 0)
 
@@ -139,77 +139,91 @@ function Resolve-Conflict-And-Merge {
 
     # Define the merged folder name
     $mergedFolderName = "zzzzzzzzzz_MERGED_MOD"
-    $tempModFolder = "C:\S2SMM"
-    $mergedFolderPath = Join-Path -Path $tempModFolder -ChildPath $mergedFolderName
+    $mergedFolderPath = Join-Path -Path $modFolder -ChildPath $mergedFolderName
 
     # Create the merged folder
     if (-not (Test-Path $mergedFolderPath)) {
         New-Item -ItemType Directory -Path $mergedFolderPath | Out-Null
     }
 
-    # Prepare paths for unpacking
-    if (-not (Test-Path $tempModFolder)) {
-        New-Item -ItemType Directory -Path $tempModFolder | Out-Null
-        # empty the folder if not empty
-        Remove-Item -Path $tempModFolder\* -Recurse -Force -Confirm:$false
+    #if a there is already a merged pak, rename it to _previous
+    foreach ($mod in $conflictingMods) {
+        if ($mod.BaseName -eq $mergedFolderName) {
+            $renamedMod = $mergedFolderName+"_previous.pak"
+            #Rename-Item -Path $mod.FullName -NewName  -Force
+            Rename-Item -Path $mod.FullName -NewName $renamedMod -Force
+            #get the pak file
+            $previousMergedPakPath = Join-Path -Path $modFolder -ChildPath $renamedMod
+            $previousMergedPak = Get-Item -Path $previousMergedPakPath
+            #replace the mod in the conflictingMods array
+            $conflictingMods[$conflictingMods.IndexOf($mod)] = $previousMergedPak
+            break
+        }
     }
 
     $unpackedDirs = @{}
     foreach ($mod in $conflictingMods) {
-        $tempModPath = Join-Path -Path $tempModFolder -ChildPath $mod.Name
-        Move-Item -Path $mod.FullName -Destination $tempModPath -Force
-        $unpackDir = Join-Path -Path $tempModFolder -ChildPath $mod.BaseName
-        if (-not (Test-Path $unpackDir)) {
+        $modPath = Join-Path -Path $modFolder -ChildPath $mod.Name
+        Move-Item -Path $mod.FullName -Destination $modPath
+        $unpackDir = Join-Path -Path $modFolder -ChildPath $mod.BaseName
+        if (-not (Test-Path -Path $unpackDir)) {
             # Unpack the mod `.pak` file into its own folder
             Write-Host "Unpacking $($mod.Name)..."
-            $arguments = "unpack `"$tempModPath`""
-            Start-Process -FilePath "$RepackPath\repak.exe" -ArgumentList $arguments -Wait -NoNewWindow
+            & $RepackExe unpack $modPath
         }
         $unpackedDirs[$mod.FullName] = $unpackDir
     }
 
     # Copy everything from all mods to the merged folder
     foreach ($mod in $conflictingMods) {
-        # List all folders in the mod folder non-recursively
-        $modFiles = Get-ChildItem -Path $unpackedDirs[$mod.FullName]
+        # copy all top level files
+        $modFiles = Get-ChildItem -Path $unpackedDirs[$mod.FullName] -Recurse -File
         foreach ($modFile in $modFiles) {
-            Copy-Item -Path $modFile.FullName -Destination $mergedFolderPath -Recurse -Force
+            # if the file is in conflictingFiles array, skip it
+            $skipFile = $false
+            foreach ($conflictingFile in $conflictingFiles) {
+                $modFileRelativePath = $modFile.FullName.Substring($unpackedDirs[$mod.FullName].Length + 1)
+                if ($modFileRelativePath -eq $conflictingFile) {
+                    $skipFile = $true
+                    break
+                }
+            }
+            if ($skipFile) {
+                continue
+            }
+            # make sure the folder structure exists
+            $modDir = $modFile.Directory.FullName
+            $folderStructure = ($modDir -replace ".*$($mod.BaseName)", $mod.BaseName)
+            $folderStructure = $folderStructure.Substring($folderStructure.IndexOf("\") + 1)
+            Ensure-MergedFolderStructure -mergedRelativePath $folderStructure -mergedFolderPath $mergedFolderPath
+            $destinationPath = Join-Path -Path $mergedFolderPath -ChildPath $folderStructure
+            $destinationPath = Join-Path -Path $destinationPath -ChildPath $modFile.Name
+            Copy-Item -Path $modFile.FullName -Destination $destinationPath -Force
         }
     }
 
-    # Rechercher de manière récursive tous les fichiers en conflit dans le tableau conflictingFiles dans le dossier et ses sous-dossiers
     foreach ($conflictingFile in $conflictingFiles) {
-        $conflictingFileFullPaths = Get-ChildItem -Path $mergedFolderPath -Recurse -Filter $conflictingFile -File
-        foreach ($conflictingFileFullPath in $conflictingFileFullPaths) {
-            Remove-Item -Path $conflictingFileFullPath.FullName -Force
-        }
-    }
-
-    foreach ($conflictingFile in $conflictingFiles) {
-        # Find the base file from the original unpacked directory
-        $baseFilePath = Get-ChildItem -Path $unpackedDir -Recurse -Filter $conflictingFile | Select-Object -First 1
-        if (-not $baseFilePath) {
-            Write-Host "Base file for $conflictingFile not found in $unpackedDir." -ForegroundColor Red
-            continue
-        }
-
         # Collect paths of the conflicting files
         $filePaths = @()
         foreach ($mod in $conflictingMods) {
-            $modFile = Get-ChildItem -Path $unpackedDirs[$mod.FullName] -Recurse -Filter $conflictingFile | Select-Object -First 1
+            $unpackedDir = $unpackedDirs[$mod.FullName]
+            $modFile = "$unpackedDir\$conflictingFile"
             if ($modFile) {
-                $filePaths += $modFile.FullName
+                $filePaths += $modFile
             }
         }
 
         ###############################
         #  Run kdiff3 to merge files  #
         ###############################
-        $basePakName = "pakchunk0-Windows"
-        $baseRelativePath = $baseFilePath.FullName.Substring($baseFilePath.FullName.IndexOf("pakchunk0-Windows") + $basePakName.Length)
-        $mergedRelativePath = Split-Path -Path $baseRelativePath -Parent
-        $mergedAbsolutePath = Join-Path -Path $mergedFolderPath -ChildPath $mergedRelativePath
-        $outputFile = Join-Path -Path $mergedAbsolutePath -ChildPath $conflictingFile
+        $mergedAbsolutePath = $null
+        #remove the files name from the path
+        $conflictingFileName = Split-Path -Leaf $conflictingFile
+        $ModRelativePath = $conflictingFile.Substring(0, $conflictingFile.LastIndexOf("\"))
+        $baseAbsolutePath = Join-Path -Path $basePakdDir -ChildPath $ModRelativePath
+        $baseFilePath = Join-Path -Path $baseAbsolutePath -ChildPath $conflictingFileName
+        $mergedAbsolutePath = Join-Path -Path $mergedFolderPath -ChildPath $ModRelativePath
+        $outputFile = Join-Path -Path $mergedAbsolutePath -ChildPath $conflictingFileName
 
         # Ensure the merged folder structure exists before merging, if not we will not be able to save the merged file
         Ensure-MergedFolderStructure -mergedRelativePath $mergedRelativePath -mergedFolderPath $mergedFolderPath
@@ -228,20 +242,22 @@ function Resolve-Conflict-And-Merge {
         # Start kdiff3 process and wait for it to finish
         $filePath0 = $filePaths[0]
         $filePath1 = $filePaths[1]
-        $arguments = "`"$($baseFilePath.FullName)`" `"$filePath0`" `"$filePath1`" -o `"$outputFile`" $auto"
+        $arguments = "`"$baseFilePath`" `"$filePath0`" `"$filePath1`" -o `"$outputFile`" $auto"
         Start-Process -FilePath "$kdiff3Folder\kdiff3.exe" -ArgumentList $arguments -Wait -NoNewWindow
 
         # Merge the resulting file with the remaining mods
         for ($i = 2; $i -lt $filePaths.Count; $i++) {
             # Rename the output file by adding a suffix _merged
-            $mergedFile = "$($baseFilePath.BaseName)_merged.cfg"
-            $outputDirectory = Split-Path -Path $conflictingFileFullPath -Parent
-            $mergedFilePath = Join-Path -Path $outputDirectory -ChildPath $mergedFile
+            $outputFileName = (Split-Path -Leaf $outputFile) -replace '\.[^.]+$', ''
+            $mergedFile = $outputFileName+"_merged.cfg"
+            $mergedFilePath = Join-Path -Path $mergedAbsolutePath -ChildPath $mergedFile
+            # Rename the output file to the merged file name
             Rename-Item -Path $outputFile -NewName $mergedFile -Force
             $modName = Split-Path -Path $conflictingMods[$i] -Leaf
             Write-Host "Merging merged file and $modName with base..."
+            Write-Host 
             $filePathI = $filePaths[$i]
-            $arguments = "`"$($baseFilePath.FullName)`" `"$mergedFilePath`" `"$filePathI`" -o `"$outputFile`" $auto"
+            $arguments = "`"$baseFilePath`" `"$mergedFilePath`" `"$filePathI`" -o `"$outputFile`" $auto"
             Start-Process -FilePath "$kdiff3Folder\kdiff3.exe" -ArgumentList $arguments -Wait -NoNewWindow
             # Delete the merged file
             Remove-Item -Path $mergedFilePath -Force
@@ -255,23 +271,24 @@ function Resolve-Conflict-And-Merge {
     Start-Process -FilePath "$RepackPath\repak.exe" -ArgumentList $arguments -Wait -NoNewWindow
     Write-Host "Merged mod created: $mergedFolderName.pak" -ForegroundColor Green
 
-    #move back all the pak files to the mod folder
-    $tempPakFiles = Get-ChildItem -Path $tempModFolder -Filter *.pak
-    foreach ($tempPakFile in $tempPakFiles) {
-        Move-Item -Path $tempPakFile.FullName -Destination $modFolder -Force
-    }
+    #search for the previous merged pak and delete it
     foreach ($mod in $conflictingMods) {
-        $unpackDir = Join-Path -Path $tempModFolder -ChildPath $mod.BaseName
+        if ($mod.BaseName -eq $mergedFolderName+"_previous") {
+            $previousMergedPak = Join-Path -Path $modFolder -ChildPath ($mod.BaseName + $mod.Extension)
+            if (Test-Path $previousMergedPak) {
+                Remove-Item -Path $previousMergedPak -Force
+            }
+        }
+    }
+
+    # Clean up the unpacked directories
+    foreach ($mod in $conflictingMods) {
+        $unpackDir = Join-Path -Path $modFolder -ChildPath $mod.BaseName
         Remove-Item -Path $unpackDir -Recurse -Force -Confirm:$false
     }
     # Remove the merged folder if it exists
     if(Test-Path $mergedFolderPath) {
         Remove-Item -Path $mergedFolderPath -Recurse -Force -Confirm:$false
-    }
-    # Copy back all .pak files from the temporary folder to the real mod folder
-    $tempPakFiles = Get-ChildItem -Path $tempModFolder -Filter *.pak
-    foreach ($tempPakFile in $tempPakFiles) {
-        Move-Item -Path $tempPakFile.FullName -Destination $modFolder -Force
     }
 
     Write-Host "Done"
@@ -395,11 +412,10 @@ if(-Not($aesKey))
 # find all .pak files in the mod folder
 $pakFiles = Get-ChildItem -Recurse -Path $modFolder -Filter "*.pak"
 # Define the unpacked directory
-$unpackedDir = Join-Path -Path $pakDir -ChildPath "pakchunk0-Windows"
-
-if (-Not (Test-Path $unpackedDir)) {
+$basePakdDir = Join-Path -Path $pakDir -ChildPath "pakchunk0-Windows"
+if (-Not (Test-Path $basePakdDir)) {
     Write-Host "`nUnpacking default files..."
-    Unpack-And-Clean -RepackPath $RepackPath -pakDir $pakDir -unpackedDir $unpackedDir
+    Unpack-And-Clean -RepackPath $RepackPath -pakDir $pakDir -basePakdDir $basePakdDir
 }
 else {
     Write-Host "Unpacked pakchunk0-Windows found."
@@ -423,12 +439,32 @@ foreach ($pakFile in $pakFiles) {
     # filter out everything but the file name
     $files = $rawOutput -replace '^.*"(?:.+/)*(.*)".*$', '$1'
 
-    # check if files is not empty
-    if (-Not($files.Count -eq 0)) {
-        $files = Split-Path -Path $files -Leaf
-    }
-
     foreach ($file in $files) {
+        # if files path don't contains Stalker2 folder, fetch the relative path from the base pak
+        if ($file.IndexOf("Stalker2") -eq -1) {
+            Write-Host 
+            Write-Host "File path for $file not found in $pakFile." -ForegroundColor Red
+            # ask user if he wants to try to fecth the file path from the base pak
+            $fetch = Read-Host "Do you want to try to fetch the file path from the base pak? (yes/no)"
+            if ($fetch -eq "yes" -Or $fetch -eq "y") {
+                $baseFilePath = Get-ChildItem -Path $unpackedDir -Filter $file -Recurse | Select-Object -First 1
+                if (-not $baseFilePath) {
+                    Write-Host "Base file for $conflictingFile not found in $unpackedDir." -ForegroundColor Red
+                    continue
+                }
+                $baseFilePath = Get-Item $baseFilePath
+                $basePakName = "pakchunk0-Windows"
+                $baseRelativePath = $baseFilePath.FullName[$baseFilePath.FullName.IndexOf($basePakName) + $basePakName.Length..-1]
+                $file = $baseRelativePath.TrimStart('\')
+                Write-Host "File path fetched: $file"
+            } else {
+                Write-Host "Skipping $file." -ForegroundColor Cyan
+                continue
+            }
+            Write-Host 
+        }
+        #replace / with \
+        $file = $file.Replace("/", "\")
         if ($results.ContainsKey($file)) {
             [void]$results[$file].Add($pakFile)
         } else {
