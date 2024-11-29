@@ -1,6 +1,19 @@
+#Requires -version 5.1
 ##############################################
 # script setup with folder picker            #
 ##############################################
+
+function Test-LongPath {
+    param (
+        [string]$Path
+    )
+    try {
+        [System.IO.Directory]::Exists($Path) -or [System.IO.File]::Exists($Path)
+    } catch {
+        Write-Host "Error checking path: $_" -ForegroundColor Red
+        $false
+    }
+}
 
 # Global variable to store the AES key
 $aesKey = $null
@@ -13,39 +26,39 @@ function Get-AES-Key
         [string]$aesKeySavedPath
     )
 	
-	﻿$binariesPath = Join-Path -Path $installPath -ChildPath "Stalker2\Binaries\"
-    $Win64Path = Join-Path -Path $binariesPath -ChildPath "Win64\"
-    $WinGDKPath = Join-Path -Path $binariesPath -ChildPath "WinGDK\"
+	$binariesPath = [System.IO.Path]::Combine($installPath,"Stalker2\Binaries\")
+    $Win64Path = [System.IO.Path]::Combine($binariesPath,"Win64\")
+    $WinGDKPath = [System.IO.Path]::Combine($binariesPath,"WinGDK\")
     $stalkerExe = $null
     $exeName = $null
     # Define paths
-    if (Test-Path $Win64Path) {
-            $stalkerExe = Join-Path -Path $Win64Path -ChildPath "Stalker2-Win64-Shipping.exe"
+    if (Test-LongPath -Path $Win64Path) {
+            $stalkerExe = [System.IO.Path]::Combine($Win64Path,"Stalker2-Win64-Shipping.exe")
             $exeName = "Stalker2-Win64-Shipping.exe"
     }
-    if (Test-Path $WinGDKPath) {
-            $stalkerExe = Join-Path -Path $WinGDKPath -ChildPath "Stalker2-WinGDK-Shipping.exe"
+    if (Test-LongPath -Path $WinGDKPath) {
+            $stalkerExe = [System.IO.Path]::Combine($WinGDKPath,"Stalker2-WinGDK-Shipping.exe")
             $exeName = "Stalker2-WinGDK-Shipping.exe"
     }
     
-    $copiedExe = Join-Path -Path $AESDumpsterPath -ChildPath $exeName
-	$aesDumpsterExe = Join-Path -Path $AESDumpsterPath -ChildPath "AESDumpster-Win64.exe"
+    $copiedExe = [System.IO.Path]::Combine($AESDumpsterPath,$exeName)
+	$aesDumpsterExe = [System.IO.Path]::Combine($AESDumpsterPath,"AESDumpster-Win64.exe")
 
 	# Ensure the AESDumpster directory exists
-	if (!(Test-Path $AESDumpsterPath)) {
+	if (!(Test-LongPath -Path $AESDumpsterPath)) {
 		New-Item -ItemType Directory -Path $AESDumpsterPath | Out-Null
 	}
 
 	# Copy the Stalker2 executable to AESDumpster directory
-    if (Test-Path $stalkerExe) {
-        Copy-Item -Path $stalkerExe -Destination $copiedExe -Force
+    if (Test-LongPath -Path $stalkerExe) {
+        [System.IO.File]::Copy($stalkerExe, $copiedExe, $true)
     } else {
         Write-Output "Source executable not found: $stalkerExe"
         return
     }
 
     # Debugging: Confirm file was copied
-    if (!(Test-Path $copiedExe)) {
+    if (!(Test-LongPath -Path $copiedExe)) {
         Write-Output "Failed to copy the executable to $AESDumpsterPath."
         return
     }
@@ -82,18 +95,32 @@ function Unpack-And-Clean {
 	
 	# Run the unpack command
     Write-Host "Unpacking pakchunk0-Windows.pak. This may take some time..." -ForegroundColor Yellow
-    & "$RepackPath\repak.exe" --aes-key $aesKey unpack "$pakDir\pakchunk0-Windows.pak"
+    $pakchunk0 = $pakDir+"\pakchunk0-Windows.pak"
+    $pakchunk0 = $pakchunk0.Substring(4)
+    & "$RepackPath\repak.exe" --aes-key $aesKey unpack $pakchunk0
     
-	if (Test-Path $unpackedDir) {
-		Write-Host "Cleaning up useless files. This may take some time..." -ForegroundColor Yellow
+	if (Test-LongPath -Path $unpackedDir) {
+        Write-Host "Cleaning up useless files. This may take some time..." -ForegroundColor Yellow
         # Delete all files that are not .cfg
-        Get-ChildItem -Path $unpackedDir -Recurse -File | Where-Object { $_.Extension -ne ".cfg" } | Remove-Item -Force
-        # Recursively delete empty folders until no more remain
-		do {
-			$emptyFolders = Get-ChildItem -Path $unpackedDir -Recurse -Directory | Where-Object { (Get-ChildItem -Path $_.FullName).Count -eq 0 }
-			$emptyFolders | Remove-Item -Force
-		} while ($emptyFolders.Count -gt 0)
-
+        $files = [System.IO.Directory]::GetFiles($unpackedDir, "*", [System.IO.SearchOption]::AllDirectories)
+        foreach ($file in $files) {
+            if ([System.IO.Path]::GetExtension($file) -ne ".cfg") {
+                [System.IO.File]::Delete($file)
+            }
+        }
+        # delete all empty folders and subfolders
+        $dirs = [System.IO.Directory]::GetDirectories($unpackedDir, "*", [System.IO.SearchOption]::AllDirectories)
+        $dirs = $dirs | Sort-Object -Property Length -Descending     
+        foreach ($dir in $dirs) {
+            if (Test-LongPath -Path $dir -and ) {
+                $filesInDir = [System.IO.Directory]::GetFiles($dir, "*", [System.IO.SearchOption]::AllDirectories)
+                $fileCount = $filesInDir.Length
+                if(($fileCount -eq 0))
+                {
+                    [System.IO.Directory]::Delete($dir, $true)
+                }
+            }
+        }
         Write-Host "Cleanup complete." -ForegroundColor Green
     } else {
         Write-Host "Unpacked directory not found. Ensure the unpack step was successful." -ForegroundColor Red
@@ -112,11 +139,42 @@ function Ensure-MergedFolderStructure {
     # Iterate through each folder in the relative path
     foreach ($folder in $folders) {
         # Construct the full path for the current folder
-        $currentPath = Join-Path -Path $currentPath -ChildPath $folder
+        $currentPath = [System.IO.Path]::Combine($currentPath,$folder)
         # Check if the folder exists
-        if (-not (Test-Path -Path $currentPath)) {
+        if (-not (Test-LongPath -Path $currentPath)) {
             # Create the folder if it does not exist
             New-Item -ItemType Directory -Path $currentPath | Out-Null
+        }
+    }
+}
+
+function Copy-LongPathDirectory {
+    param (
+        [System.IO.DirectoryInfo]$sourcePath,
+        [System.IO.DirectoryInfo]$destinationPath
+    )
+
+    # Create the destination directory if it doesn't exist
+    $destinationDir = [System.IO.Path]::Combine($destinationPath.FullName, $sourcePath.Name)
+    if (-not (Test-Path -Path $destinationDir)) {
+        [System.IO.Directory]::CreateDirectory($destinationDir) | Out-Null
+    }
+
+    # Get all files and directories in the source directory
+    $items = [System.IO.Directory]::EnumerateFileSystemEntries($sourcePath.FullName, '*', [System.IO.SearchOption]::AllDirectories)
+
+    foreach ($item in $items) {
+        $relativePath = $item.Substring($sourcePath.FullName.Length + 1)
+        $destinationItemPath = [System.IO.Path]::Combine($destinationDir, $relativePath)
+
+        if ([System.IO.Directory]::Exists($item)) {
+            [System.IO.Directory]::CreateDirectory($destinationItemPath) | Out-Null
+        } elseif ([System.IO.File]::Exists($item)) {
+            try {
+                [System.IO.File]::Copy($item, $destinationItemPath, $true)
+            } catch {
+                Write-Host "Skipping file $item because it is being used by another process."
+            }
         }
     }
 }
@@ -139,27 +197,51 @@ function Resolve-Conflict-And-Merge {
 
     # Define the merged folder name
     $mergedFolderName = "zzzzzzzzzz_MERGED_MOD"
-    $tempModFolder = "C:\S2SMM"
-    $mergedFolderPath = Join-Path -Path $tempModFolder -ChildPath $mergedFolderName
-
-    # Create the merged folder
-    if (-not (Test-Path $mergedFolderPath)) {
-        New-Item -ItemType Directory -Path $mergedFolderPath | Out-Null
-    }
+    $tempModFolder = "\\?\C:\S2SMM"
+    $mergedFolderPath = [System.IO.Path]::Combine($tempModFolder,$mergedFolderName)
 
     # Prepare paths for unpacking
-    if (-not (Test-Path $tempModFolder)) {
-        New-Item -ItemType Directory -Path $tempModFolder | Out-Null
+    if (-not (Test-LongPath -Path $tempModFolder)) {
+        [System.IO.Directory]::CreateDirectory($tempModFolder)
+    }
+    else {
         # empty the folder if not empty
-        Remove-Item -Path $tempModFolder\* -Recurse -Force -Confirm:$false
+        $tempModFolderFiles = [System.IO.Directory]::GetFiles($tempModFolder, "*", [System.IO.SearchOption]::TopDirectoryOnly)
+        $tempModFolderDirs = [System.IO.Directory]::GetDirectories($tempModFolder, "*", [System.IO.SearchOption]::TopDirectoryOnly)
+        foreach ($file in $tempModFolderFiles) {
+            [System.IO.File]::Delete($file)
+        }
+        foreach ($dir in $tempModFolderDirs) {
+            [System.IO.Directory]::Delete($dir, $true)
+        }
+    }
+
+    # Create the merged folder
+    if (-not (Test-LongPath -Path $mergedFolderPath)) {
+        [System.IO.Directory]::CreateDirectory($mergedFolderPath)
+    }
+
+    #if a there is already a merged pak, rename it to _previous
+    foreach ($mod in $conflictingMods) {
+        if ($mod.BaseName -eq $mergedFolderName) {
+            $renamedMod = $mergedFolderName+"_previous.pak"
+            $renamedModPath = [System.IO.Path]::Combine($modFolder, $renamedMod)
+            #Rename-Item -Path $mod.FullName -NewName  -Force
+            [System.IO.File]::Move($mod.FullName, $renamedModPath)
+            #$previousMergedPak = Get-Item -Path $modFolder\zzzzzzzzzz_MERGED_MOD_previous.pak
+            $previousMergedPak = [System.IO.FileInfo]::new($renamedModPath)
+            #replace the mod in the conflictingMods array
+            $conflictingMods[$conflictingMods.IndexOf($mod)] = $previousMergedPak
+            break
+        }
     }
 
 	$unpackedDirs = @{}
     foreach ($mod in $conflictingMods) {
-        $tempModPath = Join-Path -Path $tempModFolder -ChildPath $mod.Name
-        Move-Item -Path $mod.FullName -Destination $tempModPath -Force
-        $unpackDir = Join-Path -Path $tempModFolder -ChildPath $mod.BaseName
-        if (-not (Test-Path $unpackDir)) {
+        $tempModPath = [System.IO.Path]::Combine($tempModFolder,$mod.Name)
+        [System.IO.File]::Move($mod.FullName, $tempModPath)
+        $unpackDir = [System.IO.Path]::Combine($tempModFolder,$mod.BaseName)
+        if (-not (Test-LongPath -Path $unpackDir)) {
             # Unpack the mod `.pak` file into its own folder
             Write-Host "Unpacking $($mod.Name)..."
             & "$repackPath\repak.exe" unpack $tempModPath
@@ -170,35 +252,47 @@ function Resolve-Conflict-And-Merge {
     if (-not $OnlyConflicts) {
         # Copy everything from all mods to the merged folder
         foreach ($mod in $conflictingMods) {
-            # List all folders in the mod folder non-recursively
-            $modFiles = Get-ChildItem -Path $unpackedDirs[$mod.FullName]
+            # copy all top level files
+            $modFiles = [System.IO.Directory]::GetFiles($unpackedDirs[$mod.FullName], "*", [System.IO.SearchOption]::TopDirectoryOnly)
             foreach ($modFile in $modFiles) {
-                Copy-Item -Path $modFile.FullName -Destination $mergedFolderPath -Recurse -Force
+                $modFile = [System.IO.FileInfo]::new($modFile)
+                [System.IO.File]::Copy($modDir.FullName, "$mergedFolderPath\$($modFile.Name)", $true)
+            }
+            # copy all top level directories
+            $modDirs = [System.IO.Directory]::GetDirectories($unpackedDirs[$mod.FullName], "*", [System.IO.SearchOption]::TopDirectoryOnly)
+            foreach ($modDir in $modDirs) {
+                Copy-LongPathDirectory -sourcePath $modDir -destinationPath $mergedFolderPath
             }
         }
     }
 
     # Recursively search for all conflicting files in the conflictingFiles array in the folder and its subfolders
     foreach ($conflictingFile in $conflictingFiles) {
-        $conflictingFileFullPaths = Get-ChildItem -Path $mergedFolderPath -Recurse -Filter $conflictingFile -File
+        $conflictingFileFullPaths = [System.IO.Directory]::GetFiles($mergedFolderPath, $conflictingFile, [System.IO.SearchOption]::AllDirectories)
         foreach ($conflictingFileFullPath in $conflictingFileFullPaths) {
-            Remove-Item -Path $conflictingFileFullPath.FullName -Force
+            $conflictingFileFullPath = [System.IO.FileInfo]::new($conflictingFileFullPath)
+            [System.IO.File]::Delete($conflictingFileFullPath.FullName)
         }
     }
 
     foreach ($conflictingFile in $conflictingFiles) {
         # Find the base file from the original unpacked directory
-        $baseFilePath = Get-ChildItem -Path $unpackedDir -Recurse -Filter $conflictingFile | Select-Object -First 1
+        $baseFilePath = [System.IO.Directory]::GetFiles($unpackedDir, $conflictingFile, [System.IO.SearchOption]::AllDirectories) | Select-Object -First 1
         if (-not $baseFilePath) {
             Write-Host "Base file for $conflictingFile not found in $unpackedDir." -ForegroundColor Red
             continue
         }
-
+        $baseFilePath = [System.IO.FileInfo]::new($baseFilePath)
         # Collect paths of the conflicting files
         $filePaths = @()
         foreach ($mod in $conflictingMods) {
-            $modFile = Get-ChildItem -Path $unpackedDirs[$mod.FullName] -Recurse -Filter $conflictingFile | Select-Object -First 1
+            $unpackedDir = $unpackedDirs[$mod.FullName]
+            # Gather all files with the same name as the conflicting file
+            $allFiles = [System.IO.Directory]::GetFiles($unpackedDir, "*.cfg", [System.IO.SearchOption]::AllDirectories)
+            # Filter out the conflicting file
+            $modFile = $allFiles | Where-Object { $_ -like "*$conflictingFile" } | Select-Object -First 1
             if ($modFile) {
+                $modFile = [System.IO.FileInfo]::new($modFile)
                 $filePaths += $modFile.FullName
             }
         }
@@ -207,14 +301,25 @@ function Resolve-Conflict-And-Merge {
         #  Run kdiff3 to merge files  #
         ###############################
         $basePakName = "pakchunk0-Windows"
-        $baseRelativePath = $baseFilePath.FullName.Substring($baseFilePath.FullName.IndexOf("pakchunk0-Windows") + $basePakName.Length)
-        $mergedRelativePath = Split-Path -Path $baseRelativePath -Parent
-        $mergedAbsolutePath = Join-Path -Path $mergedFolderPath -ChildPath $mergedRelativePath
-        $outputFile = Join-Path -Path $mergedAbsolutePath -ChildPath $conflictingFile
+        $mergedAbsolutePath = $null
+        # if base file contains the pak name 
+        if ($baseFilePath.FullName -match $basePakName) {
+            $baseRelativePath = $baseFilePath.FullName.Substring($baseFilePath.FullName.IndexOf($basePakName) + $basePakName.Length)
+            $mergedRelativePath = Split-Path -Path $baseRelativePath -Parent
+            $mergedAbsolutePath = [System.IO.Path]::Combine($mergedFolderPath,$mergedRelativePath.Substring(1))
+        }
+        else {
+            $baseRelativePath = $baseFilePath.FullName.Substring($baseFilePath.FullName.IndexOf("Stalker2"))
+            $mergedRelativePath = Split-Path -Path $baseRelativePath -Parent
+            $mergedAbsolutePath = [System.IO.Path]::Combine($mergedFolderPath,$mergedRelativePath)
+        }
+        $outputFile = [System.IO.Path]::Combine($mergedAbsolutePath, $conflictingFile)
+        $outputFile = [System.IO.FileInfo]::new($outputFile)
 
         # Ensure the merged folder structure exists before merging, if not we will not be able to save the merged file
         Ensure-MergedFolderStructure -mergedRelativePath $mergedRelativePath -mergedFolderPath $mergedFolderPath
 
+        Write-Host 
         Write-Host "Merging $conflictingFile..."
         $auto = ""
         if ($mergeType -eq "2") {
@@ -231,19 +336,20 @@ function Resolve-Conflict-And-Merge {
         Write-Host "Merging $modName0 and $modName1 with base..."
         Write-Host 
         # Start kdiff3 process and wait for it to finish
-        & "$kdiff3Folder\kdiff3.exe" $baseFilePath.FullName $filePaths[0] $filePaths[1] "-o" $outputFile $auto | Out-Null
+        & "$kdiff3Folder\kdiff3.exe" $baseFilePath.FullName.Substring(4) $filePaths[0].Substring(4) $filePaths[1].Substring(4) "-o" $outputFile.FullName.Substring(4) $auto | Out-Null
         # Merge the resulting file with the remaining mods
         for ($i = 2; $i -lt $filePaths.Count; $i++) {
             # Rename the output file by adding a suffix _merged
             $mergedFile = "$($baseFilePath.BaseName)_merged.cfg"
-            $mergedFilePath = Join-Path -Path $mergedAbsolutePath -ChildPath $mergedFile
-            Rename-Item -Path $outputFile -NewName $mergedFile -Force
+            $mergedFilePath = [System.IO.Path]::Combine($mergedAbsolutePath,$mergedFile)
+            # Rename the output file to the merged file name
+            [System.IO.File]::Move($outputFile, $mergedFile)
             $modName = Split-Path -Path $conflictingMods[$i] -Leaf
             Write-Host "Merging merged file and $modName with base..."
             Write-Host 
-            & "$KDiff3Folder\kdiff3.exe" $baseFilePath.FullName $mergedFilePath $filePaths[$i] "-o" $outputFile $auto | Out-Null
+            & "$KDiff3Folder\kdiff3.exe" $baseFilePath.FullName.Substring(4) $mergedFilePath $filePaths[$i].Substring(4) "-o" $outputFile.FullName.Substring(4) $auto | Out-Null
             # Delete the merged file
-            Remove-Item -Path $mergedFilePath -Force
+            [System.IO.Directory]::Delete($mergedFilePath, $true)
             
         }
 
@@ -262,10 +368,18 @@ function Resolve-Conflict-And-Merge {
             if ($unpackDir -eq $mergedFolderPath) {
                 continue
             }
+            #delte previous merged pak
+            $previousMergeFolderName = $mergedFolderName+"_previous"
+            if ($mod.BaseName -eq $previousMergeFolderName) {
+                $ModToDeletePath = [System.IO.Path]::Combine($tempModFolder, $mod.Name)
+                [System.IO.File]::Delete($ModToDeletePath)
+                continue
+            }
             foreach ($conflictingFile in $conflictingFiles) {
-                $conflictingFileFullPaths = Get-ChildItem -Path $unpackDir -Recurse -Filter $conflictingFile -File
+                $conflictingFileFullPaths = [System.IO.Directory]::GetFiles($unpackDir, $conflictingFile, [System.IO.SearchOption]::AllDirectories)
                 foreach ($conflictingFileFullPath in $conflictingFileFullPaths) {
-                    Remove-Item -Path $conflictingFileFullPath.FullName -Force -Recurse
+                    $conflictingFileFullPath = [System.IO.FileInfo]::new($conflictingFileFullPath)
+                    [System.IO.File]::Delete($conflictingFileFullPath.FullName)
                 }
             }
             # Repacking the mod
@@ -273,14 +387,16 @@ function Resolve-Conflict-And-Merge {
             & "$RepackPath\repak.exe" pack $unpackDir
             Write-Host 
             # Check if the directory is empty after deleting conflicting files
-            if (-not (Get-ChildItem -Path $unpackDir -Recurse -File | Measure-Object).Count) {
+            $filesInDir = [System.IO.Directory]::GetFiles($unpackDir, "*", [System.IO.SearchOption]::AllDirectories)
+            if ($filesInDir.Length -eq 0) {
                 Write-Host 
                 Write-Host "No remaining files in $($mod.Name) after deleting conflicts."
                 $deleteEmptyPak = Read-Host "Do you want to delete the empty .pak file for $($mod.Name)? (yes/no)"
                 if ($deleteEmptyPak -eq "yes" -Or $deleteEmptyPak -eq "y") {
                     Write-Host "Deleting the .pak file."
                     # Delete the .pak file
-                    Remove-Item -Path $mod.FullName -Force
+                    $modPath = [System.IO.Path]::Combine($tempModFolder,$mod.Name)
+                    [System.IO.File]::Delete($modPath)
                     Write-Host 
                 } else {
                     Write-Host "Keeping the empty .pak file."
@@ -291,18 +407,20 @@ function Resolve-Conflict-And-Merge {
     }
 
     #move back all the pak files to the mod folder
-    $tempPakFiles = Get-ChildItem -Path $tempModFolder -Filter *.pak
+    $tempPakFiles = [System.IO.Directory]::GetFiles($tempModFolder, "*.pak", [System.IO.SearchOption]::AllDirectories)
     foreach ($tempPakFile in $tempPakFiles) {
-        Move-Item -Path $tempPakFile.FullName -Destination $modFolder -Force
+        $tempPakFile = [System.IO.FileInfo]::new($tempPakFile)
+        $modPakPath = [System.IO.Path]::Combine($modFolder, $tempPakFile.Name)
+        [System.IO.File]::Move($tempPakFile.FullName, $modPakPath)
     }
 
     foreach ($mod in $conflictingMods) {
-        $unpackDir = Join-Path -Path $tempModFolder -ChildPath $mod.BaseName
-        Remove-Item -Path $unpackDir -Recurse -Force -Confirm:$false
+        $unpackDir = [System.IO.Path]::Combine($tempModFolder,$mod.BaseName)
+        [System.IO.Directory]::Delete($unpackDir, $true)
     }
     # Remove the merged folder if it exists
-    if(Test-Path $mergedFolderPath) {
-        Remove-Item -Path $mergedFolderPath -Recurse -Force -Confirm:$false
+    if(Test-LongPath $mergedFolderPath) {
+        [System.IO.Directory]::Delete($mergedFolderPath, $true)
     }
 
     if (-not $OnlyConflicts) {
@@ -312,22 +430,29 @@ function Resolve-Conflict-And-Merge {
         Write-Host 
         Write-Host "Cleaning and backing up pak mods..."
         # Rename conflicting mods with .bak extension and move them to a backup folder
-        $backupFolder = Join-Path -Path $modFolder -ChildPath "~backup"
-        if (-not (Test-Path $backupFolder)) {
-            New-Item -ItemType Directory -Path $backupFolder | Out-Null
+        $backupFolder = [System.IO.Path]::Combine($modFolder,"~backup")
+        if (-not (Test-LongPath $backupFolder)) {
+            [System.IO.Directory]::CreateDirectory($backupFolder)
         }
         foreach ($mod in $conflictingMods) {
             $modFileBak = "$($mod.BaseName).bak"
-            $fullModFileBakPath = Join-Path -Path $modFolder -ChildPath $modFileBak
-            Rename-Item -Path $($mod.FullName) -NewName $modFileBak -Force
-            Move-Item -Path $fullModFileBakPath -Destination $backupFolder -Force
+            $fullModFileBakPath = [System.IO.Path]::Combine($backupFolder, $modFileBak)
+            if ($mod.BaseName -eq $previousMergeFolderName) {
+                continue
+            }
+            # check if bak file already exists
+            if (Test-LongPath $fullModFileBakPath) {
+                [System.IO.File]::Delete($fullModFileBakPath)
+            }
+            # Rename the mod file to .bak and move to backup folder
+            [System.IO.File]::Move($($mod.FullName), $fullModFileBakPath)
         }
     }
 
     # Copy back all .pak files from the temporary folder to the real mod folder
-    $tempPakFiles = Get-ChildItem -Path $tempModFolder -Filter *.pak
+    $tempPakFiles = [System.IO.Directory]::GetFiles($tempModFolder, "*.pak", [System.IO.SearchOption]::AllDirectories)
     foreach ($tempPakFile in $tempPakFiles) {
-        Move-Item -Path $tempPakFile.FullName -Destination $modFolder -Force
+        [System.IO.File]::Move($tempPakFile.FullName, $modFolder)
     }
 
     Write-Host "Done" -ForegroundColor Green
@@ -338,7 +463,7 @@ function Resolve-Conflict-And-Merge {
 ################
 
 $KDiff3Folder = ".\KDiff3-0.9.98"
-if (-Not (Test-Path $KDiff3Folder)) {
+if (-Not (Test-LongPath -Path $KDiff3Folder)) {
 	Write-Host "Getting KDiff3..."
 	#curl.exe -L https://downloads.sourceforge.net/kdiff3/KDiff3-0.9.98.zip# > KDiff3-0.9.98.zip 
 	Invoke-WebRequest -UserAgent "Wget" -Uri https://downloads.sourceforge.net/kdiff3/KDiff3-0.9.98.zip -OutFile KDiff3-0.9.98.zip 
@@ -350,7 +475,7 @@ else{
 }
 
 $AESDumpsterPath = ".\AESDumpster"
-if (-Not (Test-Path $AESDumpsterPath)) {
+if (-Not (Test-LongPath -Path $AESDumpsterPath)) {
 	Write-Host "Getting AESDumpster..."
 	Invoke-WebRequest -UserAgent "Wget" -Uri https://github.com/GHFear/AESDumpster/releases/download/1.2.5/AESDumpster-Win64.exe -OutFile AESDumpster-Win64.exe
 	New-Item -Path $AESDumpsterPath -ItemType Directory
@@ -361,7 +486,7 @@ else{
 }
 
 $RepackPath = ".\repak_cli-x86_64-pc-windows-msvc"
-if (-Not (Test-Path $RepackPath)) {
+if (-Not (Test-LongPath -Path $RepackPath)) {
 	Write-Host "Getting Repack..."
 	Invoke-WebRequest -UserAgent "Wget" -Uri https://github.com/trumank/repak/releases/download/v0.2.2/repak_cli-x86_64-pc-windows-msvc.zip -OutFile repak_cli-x86_64-pc-windows-msvc.zip
 	Expand-Archive .\repak_cli-x86_64-pc-windows-msvc.zip -DestinationPath .\repak_cli-x86_64-pc-windows-msvc
@@ -378,13 +503,13 @@ $pakDir = $null
 $modFolder = $null
 $gameSavedPath = ".\gamepath.txt"
 # Check if the file exists
-if (Test-Path $gameSavedPath) {
+if (Test-LongPath -Path $gameSavedPath) {
 	Write-Output "Game path file found"
 	# Read the key from the file
 	$installPath = Get-Content $gameSavedPath
 	if ($installPath) {
-        $pakDir = Join-Path -Path $installPath -ChildPath "Stalker2\Content\Paks"
-        $modFolder = Join-Path -Path $pakDir -ChildPath "~mods"
+        $pakDir = [System.IO.Path]::Combine($installPath,"Stalker2\Content\Paks")
+        $modFolder = [System.IO.Path]::Combine($pakDir,"~mods")
 		Write-Output "Game path loaded: $installPath"
 	}
 } else {
@@ -397,10 +522,10 @@ if (Test-Path $gameSavedPath) {
     $folderDialog.ShowNewFolderButton = $false
 
     if ($folderDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        $installPath = $folderDialog.SelectedPath
+        $installPath = "\\?\" + $folderDialog.SelectedPath
         # Define the pak and mod folders based on the selected path
-        $pakDir = Join-Path -Path $installPath -ChildPath "Stalker2\Content\Paks"
-        $modFolder = Join-Path -Path $pakDir -ChildPath "~mods"
+        $pakDir = [System.IO.Path]::Combine($installPath,"Stalker2\Content\Paks")
+        $modFolder = [System.IO.Path]::Combine($pakDir,"~mods")
         #write the game path
         $installPath | Out-File $gameSavedPath
         Write-Output "Game path saved"
@@ -411,8 +536,8 @@ if (Test-Path $gameSavedPath) {
     }
 }
 
-$stalker2EXEPath = Join-Path -Path $installPath -ChildPath "Stalker2.exe"
-if (-Not (Test-Path $stalker2EXEPath))
+$stalker2EXEPath = [System.IO.Path]::Combine($installPath, "Stalker2.exe")
+if (-Not (Test-LongPath -Path $stalker2EXEPath))
 {
 	Write-Host "Wrong folder selected. Select the folder with Stalker2.exe. Exiting script." -ForegroundColor Red
     pause
@@ -421,7 +546,7 @@ if (-Not (Test-Path $stalker2EXEPath))
 
 $aesKeySavedPath = ".\key.txt"
 # Check if the file exists
-if (Test-Path $aesKeySavedPath) {
+if (Test-LongPath -Path $aesKeySavedPath) {
 	Write-Output "AES Key file found"
 	# Read the key from the file
 	$aesKey = Get-Content $aesKeySavedPath
@@ -449,11 +574,12 @@ if(-Not($aesKey))
 }
 
 # find all .pak files in the mod folder
-$pakFiles = Get-ChildItem -Recurse -Path $modFolder -Filter "*.pak"
+$pakFiles = [System.IO.Directory]::GetFiles($modFolder, "*.pak", [System.IO.SearchOption]::AllDirectories)
+$pakFiles = $filesInDir = [System.IO.Directory]::GetFiles($modFolder, "*.pak", [System.IO.SearchOption]::AllDirectories)
 # Define the unpacked directory
-$unpackedDir = Join-Path -Path $pakDir -ChildPath "pakchunk0-Windows"
+$unpackedDir = [System.IO.Path]::Combine($pakDir,"pakchunk0-Windows")
 
-if (-Not (Test-Path $unpackedDir)) {
+if (-Not (Test-LongPath -Path $unpackedDir)) {
     Write-Host "`nUnpacking default files..."
     Unpack-And-Clean -RepackPath $RepackPath -pakDir $pakDir -unpackedDir $unpackedDir
 }
@@ -471,8 +597,9 @@ $conflictingFiles = [System.Collections.ArrayList]::new()
 $modFileDictionary = [System.Collections.Hashtable]::new()
 
 foreach ($pakFile in $pakFiles) {
+    $pakFile = [System.IO.FileInfo]::new($pakFile)
     # list all files in the .pak file
-    $rawOutput = & "$RepackPath\repak.exe" list $pakFile.FullName
+    $rawOutput = & "$RepackPath\repak.exe" list $pakFile.FullName.Substring(4)
 
     # filter out everything but the file name
     $files = $rawOutput -replace '^.*"(?:.+/)*(.*)".*$', '$1'
@@ -516,7 +643,7 @@ foreach ($result in $results.GetEnumerator()) {
 if ($conflict) {
     Write-Host "Conflicting mods:"
     foreach ($mod in $conflictingMods) {
-        Write-Host "  - $($mod.FullName)"
+        Write-Host "  - $($mod.FullName.Substring(4))"
     }
     Write-Host
 
