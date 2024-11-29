@@ -347,6 +347,53 @@ function Resolve-Conflict-And-Merge {
     & $RepackExe pack $mergedFolderPath
     Write-Host "Merged mod created: $mergedFolderName.pak" -ForegroundColor Green
     Write-Host 
+
+    # repack without the conflicting files
+    if ($OnlyConflicts) {
+        foreach ($mod in $conflictingMods) {
+            $unpackDir = $unpackedDirs[$mod.FullName]
+            # Skip deletion if the directory is the merge folder
+            if ($unpackDir -eq $mergedFolderPath) {
+                continue
+            }
+            #delte previous merged pak
+            $previousMergeFolderName = $mergedFolderName+"_previous"
+            if ($mod.BaseName -eq $previousMergeFolderName) {
+                $ModToDeletePath = [System.IO.Path]::Combine($tempModFolder, $mod.Name)
+                [System.IO.File]::Delete($ModToDeletePath)
+                continue
+            }
+            foreach ($conflictingFile in $conflictingFiles) {
+                $conflictingFileFullPaths = [System.IO.Directory]::GetFiles($unpackDir, $conflictingFile, [System.IO.SearchOption]::AllDirectories)
+                foreach ($conflictingFileFullPath in $conflictingFileFullPaths) {
+                    $conflictingFileFullPath = [System.IO.FileInfo]::new($conflictingFileFullPath)
+                    [System.IO.File]::Delete($conflictingFileFullPath.FullName)
+                }
+            }
+            # Repacking the mod
+            Write-Host "Repacking $($mod.Name)..."
+            & "$RepackPath\repak.exe" pack $unpackDir
+            Write-Host 
+            # Check if the directory is empty after deleting conflicting files
+            $filesInDir = [System.IO.Directory]::GetFiles($unpackDir, "*", [System.IO.SearchOption]::AllDirectories)
+            if ($filesInDir.Length -eq 0) {
+                Write-Host 
+                Write-Host "No remaining files in $($mod.Name) after deleting conflicts."
+                $deleteEmptyPak = Read-Host "Do you want to delete the empty .pak file for $($mod.Name)? (yes/no)"
+                if ($deleteEmptyPak -eq "yes" -Or $deleteEmptyPak -eq "y") {
+                    Write-Host "Deleting the .pak file."
+                    # Delete the .pak file
+                    $modPath = [System.IO.Path]::Combine($tempModFolder,$mod.Name)
+                    [System.IO.File]::Delete($modPath)
+                    Write-Host 
+                } else {
+                    Write-Host "Keeping the empty .pak file."
+                    Write-Host 
+                }
+            }
+        }
+    }
+
     #move back all the pak files to the mod folder
     $tempPakFiles = [System.IO.Directory]::GetFiles($tempModFolder, "*.pak", [System.IO.SearchOption]::AllDirectories)
     foreach ($tempPakFile in $tempPakFiles) {
