@@ -603,8 +603,10 @@ foreach ($pakFile in $pakFiles) {
     $files = $rawOutput -replace '^.*"(?:.+/)*(.*)".*$', '$1'
 
     foreach ($file in $files) {
-        # if files path don't contains Stalker2 folder, fetch the relative path from the base pak
-        if ($file.IndexOf("Stalker2") -eq -1) {
+        #replace / with \
+        $file = $file.Replace("/","\")
+        # if files don't contains \ it mean it's at the root of the pak
+        if ($file -notmatch "\\") {
             Write-Host 
             Write-Host "File path for $file not found in $pakFile." -ForegroundColor Red
             # ask user if he wants to try to fecth the file path from the base pak
@@ -626,8 +628,6 @@ foreach ($pakFile in $pakFiles) {
             }
             Write-Host 
         }
-        #replace / with \
-        $file = $file.Replace("/","\")
         if ($results.ContainsKey($file)) {
             [void]$results[$file].Add($pakFile)
         } else {
