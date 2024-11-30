@@ -494,7 +494,7 @@ else{
 	Write-Host "Repack found"
 }
 
-Write-Host "`nSelect folder containing Stalker2.exe"
+Write-Host "`nSelect folder containing Stalker2.exe or gamelaunchhelper.exe (GamePass Version)"
 
 $installPath = $null
 $pakDir = $null
@@ -516,7 +516,7 @@ if (Test-LongPath -Path $gameSavedPath) {
     # Prompt user to select folder containing Stalker2.exe
     Add-Type -AssemblyName System.Windows.Forms
     $folderDialog = New-Object System.Windows.Forms.FolderBrowserDialog
-    $folderDialog.Description = "Select folder containing Stalker2.exe"
+    $folderDialog.Description = "Select folder containing Stalker2.exe or gamelaunchhelper.exe (GamePass Version)"
     $folderDialog.ShowNewFolderButton = $false
 
     if ($folderDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
@@ -535,12 +535,18 @@ if (Test-LongPath -Path $gameSavedPath) {
 }
 
 $stalker2EXEPath = [System.IO.Path]::Combine($installPath, "Stalker2.exe")
+$GamePassPath = [System.IO.Path]::Combine($installPath, "gamelaunchhelper.exe")
+
 if (-Not (Test-LongPath -Path $stalker2EXEPath))
 {
-	Write-Host "Wrong folder selected. Select the folder with Stalker2.exe. Exiting script." -ForegroundColor Red
+    if (-Not (Test-LongPath -Path $GamePassPath))
+    {
+	Write-Host "Wrong folder selected. Select the folder with Stalker2.exe or gamelaunchhelper.exe (GamePass Version). Exiting script." -ForegroundColor Red
     pause
     exit
+    }
 }
+
 
 $aesKeySavedPath = ".\key.txt"
 # Check if the file exists
