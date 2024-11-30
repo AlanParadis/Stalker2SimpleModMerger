@@ -283,7 +283,7 @@ function Resolve-Conflict-And-Merge {
         foreach ($mod in $conflictingMods) {
             $unpackedDir = $unpackedDirs[$mod.FullName]
             $modFile = [System.IO.Path]::Combine($unpackedDir, $conflictingFile)
-            if ($modFile) {
+            if ([System.IO.File]::Exists($modFile)) {
                 $modFile = [System.IO.FileInfo]::new($modFile)
                 $filePaths += $modFile.FullName
             }
