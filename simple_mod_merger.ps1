@@ -385,22 +385,30 @@ function Resolve-Conflict-And-Merge {
             Write-Host "Repacking $($mod.Name)..."
             & "$RepackPath\repak.exe" pack $unpackDir
             Write-Host 
+            $yesToAll = $false
             # Check if the directory is empty after deleting conflicting files
             $filesInDir = [System.IO.Directory]::GetFiles($unpackDir, "*", [System.IO.SearchOption]::AllDirectories)
             if ($filesInDir.Length -eq 0) {
-                Write-Host 
-                Write-Host "No remaining files in $($mod.Name) after deleting conflicts."
-                $deleteEmptyPak = Read-Host "Do you want to delete the empty .pak file for $($mod.Name)? (yes/no)"
-                if ($deleteEmptyPak -eq "yes" -Or $deleteEmptyPak -eq "y") {
-                    Write-Host "Deleting the .pak file."
-                    # Delete the .pak file
-                    $modPath = [System.IO.Path]::Combine($tempModFolder,$mod.Name)
-                    [System.IO.File]::Delete($modPath)
+                if(-not $yesToAll)
+                {
                     Write-Host 
-                } else {
-                    Write-Host "Keeping the empty .pak file."
-                    Write-Host 
+                    Write-Host "No remaining files in $($mod.Name) after deleting conflicts."
+                    $deleteEmptyPak = Read-Host "Do you want to delete the empty .pak file for $($mod.Name)? (yes (y) / yes to all (a) / no (n))"
+                    if ($deleteEmptyPak -eq "all" -Or $deleteEmptyPak -eq "a") {
+                        $yesToAll = $true
+                    }
+                    elseif ($deleteEmptyPak -ne "yes" -Or $deleteEmptyPak -ne "y"){
+                        Write-Host "Keeping the empty .pak file."
+                        Write-Host 
+                        continue
+                    } 
                 }
+                Write-Host 
+                Write-Host "Deleting $($mod.Name) .pak file."
+                # Delete the .pak file
+                $modPath = [System.IO.Path]::Combine($tempModFolder,$mod.Name)
+                [System.IO.File]::Delete($modPath)
+                Write-Host 
             }
         }
     }
