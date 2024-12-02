@@ -4,6 +4,8 @@
 
 $mergedFolderName = "zzzzzzzzzz_MERGED_MOD"
 
+$IsGamePassVersion = $false
+
 # Global variable to store the AES key
 $aesKey = $null
 
@@ -21,13 +23,13 @@ function Get-AES-Key
 	$stalkerExe = $null
     $exeName = $null
 	# Define paths
-	if (Test-Path $Win64Path) {
-		$stalkerExe = Join-Path -Path $Win64Path -ChildPath "Stalker2-Win64-Shipping.exe"
-        $exeName = "Stalker2-Win64-Shipping.exe"
-	}
-	if (Test-Path $WinGDKPath) {
+	if ($IsGamePassVersion) {
 		$stalkerExe = Join-Path -Path $WinGDKPath -ChildPath "Stalker2-WinGDK-Shipping.exe"
         $exeName = "Stalker2-WinGDK-Shipping.exe"
+	}
+	else {
+		$stalkerExe = Join-Path -Path $Win64Path -ChildPath "Stalker2-Win64-Shipping.exe"
+        $exeName = "Stalker2-Win64-Shipping.exe"
 	}
 	
 	$copiedExe = Join-Path -Path $AESDumpsterPath -ChildPath $exeName
@@ -362,9 +364,15 @@ if (Test-Path $gameSavedPath) {
 $stalker2EXEPath = Join-Path -Path $installPath -ChildPath "Stalker2.exe"
 if (-Not (Test-Path $stalker2EXEPath))
 {
-	Write-Host "Wrong folder selected. Select the folder with Stalker2.exe. Exiting script." -ForegroundColor Red
-    pause
-    exit
+	if (-Not (Test-LongPath -Path $GamePassPath))
+    {
+		Write-Host "Wrong folder selected. Select the folder with Stalker2.exe or gamelaunchhelper.exe (GamePass Version). Exiting script." -ForegroundColor Red
+		pause
+		exit
+    }
+    else {
+        $IsGamePassVersion = $true
+    }
 }
 
 $aesKeySavedPath = ".\key.txt"
@@ -399,7 +407,14 @@ if(-Not($aesKey))
 # find all .pak files in the mod folder
 $pakFiles = Get-ChildItem -Recurse -Path $modFolder -Filter "*.pak"
 # Define the unpacked directory
-$basePakdDir = Join-Path -Path $pakDir -ChildPath "pakchunk0-Windows"
+$basePakdDir = $null
+if($IsGamePassVersion)
+{
+	$basePakdDir = Join-Path -Path $pakDir -ChildPath "pakchunk0-WinGDK"
+}
+else{
+	$basePakdDir = Join-Path -Path $pakDir -ChildPath "pakchunk0-Windows"
+}
 if (-Not (Test-Path $basePakdDir)) {
     Write-Host "`nUnpacking default files..."
     Unpack-And-Clean -RepackPath $RepackPath -pakDir $pakDir -basePakdDir $basePakdDir
