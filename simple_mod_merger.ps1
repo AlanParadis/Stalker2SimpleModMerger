@@ -2,6 +2,8 @@
 # script setup with folder picker            #
 ##############################################
 
+$mergedFolderName = "zzzzzzzzzz_MERGED_MOD"
+
 # Global variable to store the AES key
 $aesKey = $null
 
@@ -137,8 +139,13 @@ function Resolve-Conflict-And-Merge {
     #   Setup and mod unpacking   #
     ###############################
 
+    #if there is already a merged pak, delete it
+    $mergedPakPath = Join-Path -Path $modFolder -ChildPath ($mergedFolderName + ".pak")
+    if (Test-Path $mergedPakPath) {
+        Remove-Item -Path $mergedPakPath -Force
+    }
+
     # Define the merged folder name
-    $mergedFolderName = "zzzzzzzzzz_MERGED_MOD"
     $mergedFolderPath = Join-Path -Path $modFolder -ChildPath $mergedFolderName
 
     # Create the merged folder
@@ -163,43 +170,23 @@ function Resolve-Conflict-And-Merge {
 
     $unpackedDirs = @{}
     foreach ($mod in $conflictingMods) {
-        $modPath = Join-Path -Path $modFolder -ChildPath $mod.Name
-        Move-Item -Path $mod.FullName -Destination $modPath
         $unpackDir = Join-Path -Path $modFolder -ChildPath $mod.BaseName
         if (-not (Test-Path -Path $unpackDir)) {
             # Unpack the mod `.pak` file into its own folder
             Write-Host "Unpacking $($mod.Name)..."
-            & $RepackExe unpack $modPath
+            & $RepackExe unpack $mod.FullName
         }
-        $unpackedDirs[$mod.FullName] = $unpackDir
+        # moved the unpacked pak into the mod folder
+        $unpackedFolder = $mod.FullName.Substring(0, $mod.FullName.Length - 4)
+        Move-Item -Path $unpackedFolder -Destination $modFolder -Force
+        $unpackedDirs[$mod.FullName] = Join-Path -Path $modFolder -ChildPath $mod.BaseName
     }
 
     # Copy everything from all mods to the merged folder
     foreach ($mod in $conflictingMods) {
-        # copy all top level files
-        $modFiles = Get-ChildItem -Path $unpackedDirs[$mod.FullName] -Recurse -File
-        foreach ($modFile in $modFiles) {
-            # if the file is in conflictingFiles array, skip it
-            $skipFile = $false
-            foreach ($conflictingFile in $conflictingFiles) {
-                $modFileRelativePath = $modFile.FullName.Substring($unpackedDirs[$mod.FullName].Length + 1)
-                if ($modFileRelativePath -eq $conflictingFile) {
-                    $skipFile = $true
-                    break
-                }
-            }
-            if ($skipFile) {
-                continue
-            }
-            # make sure the folder structure exists
-            $modDir = $modFile.Directory.FullName
-            $folderStructure = ($modDir -replace ".*$($mod.BaseName)", $mod.BaseName)
-            $folderStructure = $folderStructure.Substring($folderStructure.IndexOf("\") + 1)
-            Ensure-MergedFolderStructure -mergedRelativePath $folderStructure -mergedFolderPath $mergedFolderPath
-            $destinationPath = Join-Path -Path $mergedFolderPath -ChildPath $folderStructure
-            $destinationPath = Join-Path -Path $destinationPath -ChildPath $modFile.Name
-            Copy-Item -Path $modFile.FullName -Destination $destinationPath -Force
-        }
+        $unoackedModDir = $unpackedDirs[$mod.FullName]
+        # Copy all files and subdirectories from the mod to the merged directory
+        Copy-Item -Path "$unoackedModDir\*" -Destination $mergedFolderPath -Recurse -Force
     }
 
     foreach ($conflictingFile in $conflictingFiles) {
@@ -208,7 +195,7 @@ function Resolve-Conflict-And-Merge {
         foreach ($mod in $conflictingMods) {
             $unpackedDir = $unpackedDirs[$mod.FullName]
             $modFile = "$unpackedDir\$conflictingFile"
-            if ($modFile) {
+            if (Test-Path $modFile) {
                 $filePaths += $modFile
             }
         }
@@ -431,6 +418,11 @@ $conflictingFiles = [System.Collections.ArrayList]::new()
 $modFileDictionary = [System.Collections.Hashtable]::new()
 
 foreach ($pakFile in $pakFiles) {
+    #if the pak file is the merged mod, skip it
+    if ($pakFile.BaseName -eq $mergedFolderName) {
+        continue
+    }
+
     # list all files in the .pak file
     $arguments = "list `"$($pakFile.FullName)`""
     $RepackEXE = "$RepackPath\repak.exe"
@@ -441,7 +433,10 @@ foreach ($pakFile in $pakFiles) {
 
     foreach ($file in $files) {
         # if files path don't contains Stalker2 folder, fetch the relative path from the base pak
-        if ($file.IndexOf("Stalker2") -eq -1) {
+        #replace / with \
+        $file = $file.Replace("/","\")
+        # if files don't contains \ it mean it's at the root of the pak
+        if ($file -notmatch "\\") {
             Write-Host 
             Write-Host "File path for $file not found in $pakFile." -ForegroundColor Red
             # ask user if he wants to try to fecth the file path from the base pak
@@ -463,8 +458,6 @@ foreach ($pakFile in $pakFiles) {
             }
             Write-Host 
         }
-        #replace / with \
-        $file = $file.Replace("/", "\")
         if ($results.ContainsKey($file)) {
             [void]$results[$file].Add($pakFile)
         } else {
