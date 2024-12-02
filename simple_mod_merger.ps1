@@ -15,6 +15,8 @@ function Test-LongPath {
     }
 }
 
+$IsGamePassVersion = $false
+
 # Global variable to store the AES key
 $aesKey = $null
 
@@ -32,13 +34,13 @@ function Get-AES-Key
     $stalkerExe = $null
     $exeName = $null
     # Define paths
-    if (Test-LongPath -Path $Win64Path) {
-            $stalkerExe = [System.IO.Path]::Combine($Win64Path,"Stalker2-Win64-Shipping.exe")
-            $exeName = "Stalker2-Win64-Shipping.exe"
+    if ($IsGamePassVersion) {
+        $stalkerExe = [System.IO.Path]::Combine($WinGDKPath,"Stalker2-WinGDK-Shipping.exe")
+        $exeName = "Stalker2-WinGDK-Shipping.exe"
     }
-    if (Test-LongPath -Path $WinGDKPath) {
-            $stalkerExe = [System.IO.Path]::Combine($WinGDKPath,"Stalker2-WinGDK-Shipping.exe")
-            $exeName = "Stalker2-WinGDK-Shipping.exe"
+    else {
+        $stalkerExe = [System.IO.Path]::Combine($Win64Path,"Stalker2-Win64-Shipping.exe")
+        $exeName = "Stalker2-Win64-Shipping.exe"
     }
     
     $copiedExe = [System.IO.Path]::Combine($AESDumpsterPath,$exeName)
@@ -560,9 +562,12 @@ if (-Not (Test-LongPath -Path $stalker2EXEPath))
 {
     if (-Not (Test-LongPath -Path $GamePassPath))
     {
-	Write-Host "Wrong folder selected. Select the folder with Stalker2.exe or gamelaunchhelper.exe (GamePass Version). Exiting script." -ForegroundColor Red
-    pause
-    exit
+        Write-Host "Wrong folder selected. Select the folder with Stalker2.exe or gamelaunchhelper.exe (GamePass Version). Exiting script." -ForegroundColor Red
+        pause
+        exit
+    }
+    else {
+        $IsGamePassVersion = $true
     }
 }
 
@@ -600,7 +605,15 @@ if(-Not($aesKey))
 $pakFiles = [System.IO.Directory]::GetFiles($modFolder, "*.pak", [System.IO.SearchOption]::AllDirectories)
 $pakFiles = $filesInDir = [System.IO.Directory]::GetFiles($modFolder, "*.pak", [System.IO.SearchOption]::AllDirectories)
 # Define the unpacked directory
-$basePakdDir = [System.IO.Path]::Combine($pakDir,"pakchunk0-Windows")
+$basePakdDir = $null
+if($IsGamePassVersion)
+{
+    $basePakdDir = [System.IO.Path]::Combine($pakDir,"pakchunk0-WinGDK")
+}
+else {
+    $basePakdDir = [System.IO.Path]::Combine($pakDir,"pakchunk0-Windows")
+}
+
 
 if (-Not (Test-LongPath -Path $basePakdDir)) {
     Write-Host "`nUnpacking default files..."
