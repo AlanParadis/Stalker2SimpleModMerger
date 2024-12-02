@@ -100,11 +100,13 @@ function Unpack-And-Clean {
     
 	if (Test-LongPath -Path $basePakdDir) {
         Write-Host "Cleaning up useless files. This may take some time..." -ForegroundColor Yellow
-        # Delete all files that are not .cfg
+        # Delete all files that are not .cfg or .ini files
         $files = [System.IO.Directory]::GetFiles($basePakdDir, "*", [System.IO.SearchOption]::AllDirectories)
         foreach ($file in $files) {
-            if ([System.IO.Path]::GetExtension($file) -ne ".cfg") {
-                [System.IO.File]::Delete($file)
+            $file = [System.IO.FileInfo]::new($file)
+            $extension = $file.Extension
+            if ($extension -ne ".cfg" -and $extension -ne ".ini") {
+                [System.IO.File]::Delete($file.FullName)
             }
         }
         # delete all empty folders and subfolders
@@ -364,7 +366,16 @@ function Resolve-Conflict-And-Merge {
                 continue
             }
             foreach ($conflictingFile in $conflictingFiles) {
-                $conflictingFileFullPaths = [System.IO.Directory]::GetFiles($unpackDir, $conflictingFile, [System.IO.SearchOption]::AllDirectories)
+                $conflictingFileName = [System.IO.Path]::GetFileName($conflictingFile)
+                $conflictingFileRelativePath = $conflictingFile.Substring(0, $conflictingFile.LastIndexOf("\")+1)
+                $conflictingFilePath = [System.IO.Path]::Combine($unpackDir, $conflictingFileRelativePath)
+                $conflictingFileFullPaths = $null
+                if(Test-LongPath -Path $conflictingFilePath) {
+                    $conflictingFileFullPaths = [System.IO.Directory]::GetFiles($conflictingFilePath, $conflictingFileName, [System.IO.SearchOption]::AllDirectories)
+                }
+                else {
+                    $conflictingFileFullPaths = [System.IO.Directory]::GetFiles($unpackDir, $conflictingFileName, [System.IO.SearchOption]::AllDirectories)
+                }
                 foreach ($conflictingFileFullPath in $conflictingFileFullPaths) {
                     $conflictingFileFullPath = [System.IO.FileInfo]::new($conflictingFileFullPath)
                     [System.IO.File]::Delete($conflictingFileFullPath.FullName)
