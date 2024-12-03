@@ -539,12 +539,16 @@ $gameSavedPath = ".\gamepath.txt"
 if (Test-LongPath -Path $gameSavedPath) {
 	Write-Output "Game path file found"
 	# Read the key from the file
-	$installPath = Get-Content $gameSavedPath
-	if ($installPath) {
-        $pakDir = [System.IO.Path]::Combine($installPath,"Stalker2\Content\Paks")
-        $modFolder = [System.IO.Path]::Combine($pakDir,"~mods")
-		Write-Output "Game path loaded: $installPath"
-	}
+    $gamePathFileContent = Get-Content $gameSavedPath
+    if($gamePathFileContent)
+    {
+        $installPath = [System.IO.DirectoryInfo]::new($())
+        if (Test-LongPath -Path $installPath) {
+            $pakDir = [System.IO.Path]::Combine($installPath,"Stalker2\Content\Paks")
+            $modFolder = [System.IO.Path]::Combine($pakDir,"~mods")
+            Write-Output "Game path loaded: $installPath"
+        }
+    }
 } else {
 	Write-Output "Game path file not found."
 
@@ -555,7 +559,7 @@ if (Test-LongPath -Path $gameSavedPath) {
     $folderDialog.ShowNewFolderButton = $false
 
     if ($folderDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        $installPath = "\\?\" + $folderDialog.SelectedPath
+        $installPath = [System.IO.DirectoryInfo]::new("\\?\" + $folderDialog.SelectedPath)
         # Define the pak and mod folders based on the selected path
         $pakDir = [System.IO.Path]::Combine($installPath,"Stalker2\Content\Paks")
         $modFolder = [System.IO.Path]::Combine($pakDir,"~mods")
@@ -617,7 +621,6 @@ if(-Not($aesKey))
 
 # find all .pak files in the mod folder
 $pakFiles = [System.IO.Directory]::GetFiles($modFolder, "*.pak", [System.IO.SearchOption]::AllDirectories)
-$pakFiles = $filesInDir = [System.IO.Directory]::GetFiles($modFolder, "*.pak", [System.IO.SearchOption]::AllDirectories)
 # Define the unpacked directory
 $basePakdDir = $null
 if($IsGamePassVersion)
@@ -660,13 +663,13 @@ foreach ($pakFile in $pakFiles) {
         # if files don't contains \ it mean it's at the root of the pak
         if ($file -notmatch "\\") {
             Write-Host 
-            Write-Host "File path for $file not found in $pakFile." -ForegroundColor Red
+            Write-Host "No folder structure for $file not found in $($pakFile.FullName.Substring(4))." -ForegroundColor Red
             # ask user if he wants to try to fecth the file path from the base pak
             $fetch = Read-Host "Do you want to try to fetch the file path from the base pak? (yes/no)"
             if ($fetch -eq "yes" -Or $fetch -eq "y") {
-                $baseFilePath = [System.IO.Directory]::GetFiles($unpackedDir, $file, [System.IO.SearchOption]::AllDirectories) | Select-Object -First 1
+                $baseFilePath = [System.IO.Directory]::GetFiles($basePakdDir, $file, [System.IO.SearchOption]::AllDirectories) | Select-Object -First 1
                 if (-not $baseFilePath) {
-                    Write-Host "Base file for $conflictingFile not found in $unpackedDir." -ForegroundColor Red
+                    Write-Host "Base file for $conflictingFile not found in $basePakdDir." -ForegroundColor Red
                     continue
                 }
                 $baseFilePath = [System.IO.FileInfo]::new($baseFilePath)
