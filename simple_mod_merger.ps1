@@ -227,11 +227,20 @@ function Resolve-Conflict-And-Merge {
         Write-Host "Starting manual merge. Please complete the merge and close kdiff3 to continue..."
         $modName0 = Split-Path -Path $conflictingMods[0] -Leaf
         $modName1 = Split-Path -Path $conflictingMods[1] -Leaf
-        Write-Host "Merging $modName0 and $modName1 with base..."
         # Start kdiff3 process and wait for it to finish
         $filePath0 = $filePaths[0]
         $filePath1 = $filePaths[1]
-        $arguments = "`"$baseFilePath`" `"$filePath0`" `"$filePath1`" -o `"$outputFile`" $auto"
+		$arguments = ""
+        #if base file exists, use it as the first file to merge
+        if(Test-Path $baseFilePath) {
+            Write-Host "Merging $modName0 and $modName1 with base..."
+            $arguments = "`"$baseFilePath`" `"$filePath0`" `"$filePath1`" -o `"$outputFile`" $auto"
+        }
+        else {
+            Write-Host "Base file not found. Merging without base $modName0 and $modName1..."
+            $arguments = "`"$filePath0`" `"$filePath1`" -o `"$outputFile`" $auto"
+        }
+		Write-Host 
         Start-Process -FilePath "$kdiff3Folder\kdiff3.exe" -ArgumentList $arguments -Wait -NoNewWindow
 
         # Merge the resulting file with the remaining mods
@@ -243,10 +252,17 @@ function Resolve-Conflict-And-Merge {
             # Rename the output file to the merged file name
             Rename-Item -Path $outputFile -NewName $mergedFile -Force
             $modName = Split-Path -Path $conflictingMods[$i] -Leaf
-            Write-Host "Merging merged file and $modName with base..."
             Write-Host 
             $filePathI = $filePaths[$i]
-            $arguments = "`"$baseFilePath`" `"$mergedFilePath`" `"$filePathI`" -o `"$outputFile`" $auto"
+            #if base file exists, use it as the first file to merge
+            if(Test-Path $baseFilePath) {
+                Write-Host "Merging merged file and $modName with base..."
+                $arguments = "`"$baseFilePath`" `"$mergedFilePath`" `"$filePathI`" -o `"$outputFile`" $auto"
+            }
+            else {
+                Write-Host "Base file not found. Merging without base $mergedFile and $modName..."
+                $arguments = "`"$mergedFilePath`" `"$filePathI`" -o `"$outputFile`" $auto"
+            }
             Start-Process -FilePath "$kdiff3Folder\kdiff3.exe" -ArgumentList $arguments -Wait -NoNewWindow
             # Delete the merged file
             Remove-Item -Path $mergedFilePath -Force
