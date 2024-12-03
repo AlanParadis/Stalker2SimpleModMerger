@@ -323,10 +323,18 @@ function Resolve-Conflict-And-Merge {
         # Prepare kdiff3 arguments for manual merging
         $modName0 = Split-Path -Path $conflictingMods[0] -Leaf
         $modName1 = Split-Path -Path $conflictingMods[1] -Leaf
-        Write-Host "Merging $modName0 and $modName1 with base..."
-        Write-Host 
-        # Start kdiff3 process and wait for it to finish
-        & $KDiff3Exe $baseFilePath.Substring(4) $filePaths[0].Substring(4) $filePaths[1].Substring(4) "-o" $outputFile.FullName.Substring(4) $auto | Out-Null
+        # Start kdiff3 process and wait for it to finish     
+        if(Test-LongPath -Path $baseFilePath) {
+            Write-Host "Merging $modName0 and $modName1 with base..."
+            Write-Host 
+            & $KDiff3Exe $($baseFilePath.Substring(4)) $($filePaths[0].Substring(4)) $($filePaths[1].Substring(4)) -o $($outputFile.FullName.Substring(4)) $auto | Out-Null
+        }
+        #if base file exists, use it as the first file to merge
+        else { 
+            Write-Host "Base file not found. Merging without base $modName0 and $modName1..."
+            Write-Host 
+            & $KDiff3Exe  $($filePaths[0].Substring(4)) $($filePaths[1].Substring(4)) -o $($outputFile.FullName.Substring(4)) $auto | Out-Null
+        }
         # Merge the resulting file with the remaining mods
         for ($i = 2; $i -lt $filePaths.Count; $i++) {
             # Rename the output file by adding a suffix _merged
@@ -336,9 +344,15 @@ function Resolve-Conflict-And-Merge {
             # Rename the output file to the merged file name
             [System.IO.File]::Move($outputFile, $mergedFilePath)
             $modName = Split-Path -Path $conflictingMods[$i] -Leaf
-            Write-Host "Merging merged file and $modName with base..."
+            if(Test-LongPath -Path $baseFilePath) {
+                Write-Host "Merging $mergedFile and $modName1 with base..."
+                & $KDiff3Exe $($baseFilePath.Substring(4)) $($mergedFilePath.Substring(4)) $($filePaths[$i].Substring(4)) -o $($outputFile.Substring(4)) $auto | Out-Null
+            }
+            else {
+                Write-Host "Base file not found. Merging without base $mergedFile and $modName..."
+                & $KDiff3Exe $($mergedFilePath.Substring(4)) $($filePaths[$i].Substring(4)) -o $($outputFile.Substring(4)) $auto | Out-Null
+            }
             Write-Host 
-            & $KDiff3Exe $baseFilePath.Substring(4) $mergedFilePath.Substring(4) $filePaths[$i].Substring(4) "-o" $outputFile.FullName.Substring(4) $auto | Out-Null
             # Delete the merged file
             [System.IO.File]::Delete($mergedFilePath)
             
