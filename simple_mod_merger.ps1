@@ -346,11 +346,11 @@ function Resolve-Conflict-And-Merge {
             $modName = Split-Path -Path $conflictingMods[$i] -Leaf
             if(Test-LongPath -Path $baseFilePath) {
                 Write-Host "Merging $mergedFile and $modName1 with base..."
-                & $KDiff3Exe $($baseFilePath.Substring(4)) $($mergedFilePath.Substring(4)) $($filePaths[$i].Substring(4)) -o $($outputFile.Substring(4)) $auto | Out-Null
+                & $KDiff3Exe $($baseFilePath.Substring(4)) $($mergedFilePath.Substring(4)) $($filePaths[$i].Substring(4)) -o $($outputFile.FullName.Substring(4)) $auto | Out-Null
             }
             else {
                 Write-Host "Base file not found. Merging without base $mergedFile and $modName..."
-                & $KDiff3Exe $($mergedFilePath.Substring(4)) $($filePaths[$i].Substring(4)) -o $($outputFile.Substring(4)) $auto | Out-Null
+                & $KDiff3Exe $($mergedFilePath.Substring(4)) $($filePaths[$i].Substring(4)) -o $($outputFile.FullName.Substring(4)) $auto | Out-Null
             }
             Write-Host 
             # Delete the merged file
