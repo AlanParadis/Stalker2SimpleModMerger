@@ -542,7 +542,7 @@ if (Test-LongPath -Path $gameSavedPath) {
     $gamePathFileContent = Get-Content $gameSavedPath
     if($gamePathFileContent)
     {
-        $installPath = [System.IO.DirectoryInfo]::new($())
+        $installPath = [System.IO.DirectoryInfo]::new($gamePathFileContent)
         if (Test-LongPath -Path $installPath) {
             $pakDir = [System.IO.Path]::Combine($installPath,"Stalker2\Content\Paks")
             $modFolder = [System.IO.Path]::Combine($pakDir,"~mods")
