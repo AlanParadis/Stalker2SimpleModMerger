@@ -564,7 +564,7 @@ if (Test-LongPath -Path $gameSavedPath) {
         $pakDir = [System.IO.Path]::Combine($installPath,"Stalker2\Content\Paks")
         $modFolder = [System.IO.Path]::Combine($pakDir,"~mods")
         #write the game path
-        $installPath | Out-File $gameSavedPath
+        $installPath.FullName | Out-File $gameSavedPath
         Write-Output "Game path saved"
     } else {
         Write-Host "No folder selected. Exiting script." -ForegroundColor Red
