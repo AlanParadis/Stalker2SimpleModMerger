@@ -155,29 +155,17 @@ function Resolve-Conflict-And-Merge {
         New-Item -ItemType Directory -Path $mergedFolderPath | Out-Null
     }
 
-    #if a there is already a merged pak, rename it to _previous
-    foreach ($mod in $conflictingMods) {
-        if ($mod.BaseName -eq $mergedFolderName) {
-            $renamedMod = $mergedFolderName+"_previous.pak"
-            #Rename-Item -Path $mod.FullName -NewName  -Force
-            Rename-Item -Path $mod.FullName -NewName $renamedMod -Force
-            #get the pak file
-            $previousMergedPakPath = Join-Path -Path $modFolder -ChildPath $renamedMod
-            $previousMergedPak = Get-Item -Path $previousMergedPakPath
-            #replace the mod in the conflictingMods array
-            $conflictingMods[$conflictingMods.IndexOf($mod)] = $previousMergedPak
-            break
-        }
-    }
-
     $unpackedDirs = @{}
     foreach ($mod in $conflictingMods) {
-        $unpackDir = Join-Path -Path $modFolder -ChildPath $mod.BaseName
-        if (-not (Test-Path -Path $unpackDir)) {
-            # Unpack the mod `.pak` file into its own folder
-            Write-Host "Unpacking $($mod.Name)..."
-            & $RepackExe unpack $mod.FullName
+        #check if at the mod location there is a folder with the same name as the mod and delete it
+        $dirContainingModPath = Split-Path -Path $mod.FullName
+        $potentialUnpackedDir = Join-Path -Path $dirContainingModPath -ChildPath $mod.BaseName
+        if(Test-Path $potentialUnpackedDir) {
+            Remove-Item -Path $potentialUnpackedDir -Recurse -Force -Confirm:$false
         }
+        # Unpack the mod `.pak` file into its own folder
+        Write-Host "Unpacking $($mod.Name)..."
+        & $RepackExe unpack $mod.FullName
         # moved the unpacked pak into the mod folder
         $unpackedFolder = $mod.FullName.Substring(0, $mod.FullName.Length - 4)
         Move-Item -Path $unpackedFolder -Destination $modFolder -Force
@@ -378,9 +366,9 @@ if (Test-Path $gameSavedPath) {
 }
 
 $stalker2EXEPath = Join-Path -Path $installPath -ChildPath "Stalker2.exe"
-if (-Not (Test-Path $stalker2EXEPath))
+if (-Not (Test-Path $stalker2EXEPath) -or $true)
 {
-	if (-Not (Test-LongPath -Path $GamePassPath))
+	if (-Not (Test-Path -Path $GamePassPath) -and $false)
     {
 		Write-Host "Wrong folder selected. Select the folder with Stalker2.exe or gamelaunchhelper.exe (GamePass Version). Exiting script." -ForegroundColor Red
 		pause
