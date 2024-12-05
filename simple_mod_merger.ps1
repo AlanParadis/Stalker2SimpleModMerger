@@ -366,9 +366,9 @@ if (Test-Path $gameSavedPath) {
 }
 
 $stalker2EXEPath = Join-Path -Path $installPath -ChildPath "Stalker2.exe"
-if (-Not (Test-Path $stalker2EXEPath) -or $true)
+if (-Not (Test-Path $stalker2EXEPath))
 {
-	if (-Not (Test-Path -Path $GamePassPath) -and $false)
+	if (-Not (Test-Path -Path $GamePassPath))
     {
 		Write-Host "Wrong folder selected. Select the folder with Stalker2.exe or gamelaunchhelper.exe (GamePass Version). Exiting script." -ForegroundColor Red
 		pause
