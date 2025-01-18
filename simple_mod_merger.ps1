@@ -85,9 +85,14 @@ function Unpack-And-Clean {
     )
 	
 	# Run the unpack command
-    Write-Host "Unpacking pakchunk0-Windows.pak. This may take some time..." -ForegroundColor Yellow
-    $arguments = "--aes-key $aesKey unpack `"$pakDir\pakchunk0-Windows.pak`""
-    Start-Process -FilePath "$RepackPath\repak.exe" -ArgumentList $arguments -Wait -NoNewWindow
+	if ($IsGamePassVersion) {
+		Write-Host "Unpacking pakchunk0-WinGDK.pak. This may take some time..." -ForegroundColor Yellow
+		$arguments = "--aes-key $aesKey unpack `"$pakDir\pakchunk0-WinGDK.pak`""
+	} else {
+		Write-Host "Unpacking pakchunk0-Windows.pak. This may take some time..." -ForegroundColor Yellow
+		$arguments = "--aes-key $aesKey unpack `"$pakDir\pakchunk0-Windows.pak`""
+	}
+ 	Start-Process -FilePath "$RepackPath\repak.exe" -ArgumentList $arguments -Wait -NoNewWindow
     
 	if (Test-Path $basePakdDir) {
 		Write-Host "Cleaning up useless files. This may take some time..." -ForegroundColor Yellow
@@ -425,7 +430,7 @@ if (-Not (Test-Path $basePakdDir)) {
     Unpack-And-Clean -RepackPath $RepackPath -pakDir $pakDir -basePakdDir $basePakdDir
 }
 else {
-    Write-Host "Unpacked pakchunk0-Windows found."
+    Write-Host "Unpacked pakchunk0-Windows/WinGDK found."
 }
 Write-Host 
 
@@ -468,7 +473,11 @@ foreach ($pakFile in $pakFiles) {
                     continue
                 }
                 $baseFilePath = Get-Item $baseFilePath
-                $basePakName = "pakchunk0-Windows"
+		if ($IsGamePassVersion) {
+			$basePakName = "pakchunk0-WinGDK"
+		} else {
+			$basePakName = "pakchunk0-Windows"
+		}
                 $baseRelativePath = $baseFilePath.FullName[$baseFilePath.FullName.IndexOf($basePakName) + $basePakName.Length..-1]
                 $file = $baseRelativePath.TrimStart('\')
                 Write-Host "File path fetched: $file"
